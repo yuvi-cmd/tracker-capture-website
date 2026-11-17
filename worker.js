@@ -321,6 +321,27 @@ async function handle(request) {
     if (path === "/api/me" && method === "GET") {
       return jsonResp({ email: sess.email, admin: sess.clientId === "all", clientId: sess.clientId });
     }
+    if (path === "/api/rename" && method === "POST") {
+      try {
+        var renBody = await request.json();
+        var renFrom = String(renBody.from || "").trim();
+        var renTo = String(renBody.to || "").trim();
+        if (!renFrom || !renTo) return jsonResp({ ok: false, error: "from aur to dono chahiye" }, 400);
+        if (sess.clientId !== "all") return jsonResp({ ok: false, error: "sirf admin rename kar sakta hai" }, 403);
+        await loadNames();
+        var renamed = [];
+        for (var dnId in deviceNames) {
+          if (String(deviceNames[dnId]) === renFrom) {
+            deviceNames[dnId] = renTo;
+            renamed.push(dnId);
+          }
+        }
+        if (renamed.length) await saveNames();
+        return jsonResp({ ok: true, renamed: renamed });
+      } catch (eR) {
+        return jsonResp({ ok: false, error: "bad request" }, 400);
+      }
+    }
     if (path === "/api/captures" && method === "GET") {
       var mine = sess.clientId === "all"
         ? captures
