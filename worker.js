@@ -9,7 +9,7 @@
 //
 // APK responses (zaroori):
 //   data uploads              -> EXACT text "ok"
-//   user/loginUser.php        -> {"status":"ok","idClient":N}  ya  {"status":"no2"} (galat creds)
+//   user/loginUser.php        -> {"status":"ok","idClient":N} | {"status":"no"} (galat pw) | {"status":"no3"} (email registered nahi)
 //   user/verifPhone.php       -> {"status":"ok","nbPhone":0|1}
 //   user/savePhone.php        -> {"status":"ok","idPhone":unique}
 //   user/getLastVersionApp.php-> {"forceUpdateApp":"false"}
@@ -367,8 +367,12 @@ async function handle(request) {
           if (aHash === a.p) {
             return jsonResp({ status: "ok", idClient: a.c });
           }
+          // password galat -> APK dikhayega: "Email and/or password incorrect"
+          return jsonResp({ status: "no" });
         }
-        return jsonResp({ status: "no2" });
+        // email registered nahi -> APK dikhayega: "An error occurred during registration"
+        // (no2 = "suspended" vendor message — ise kabhi mat bhejo)
+        return jsonResp({ status: "no3" });
       }
       if (p === "/user/verifPhone.php") {
         await loadNames();
