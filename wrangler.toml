@@ -11,12 +11,9 @@ run_worker_first = true
 # Account system: /register page se email+password account banao
 #   -> APK setup mein WAHI email/password dalo -> data usi account mein
 #   -> Panel pe usi email se login -> sirf usi ka data
-# Accounts KV mein persist hote hain (KV_DATA binding chahiye)
 # OTP: email-service API key (Resend etc.) dene ke baad add hoga
 
-# ========== KV / MEDIA STORAGE ==========
-# Jab tum KV namespace ki ID do, main neeche uncomment karke ID daal dunga:
-#
-# [[kv_namespaces]]
-# binding = "KV_DATA"
-# id = "PASTE_KV_NAMESPACE_ID_HERE"
+# ========== KV STORAGE (media files + persistent data) ==========
+[[kv_namespaces]]
+binding = "KV_DATA"
+id = "b6443e429dcd482fa74cff9c3746e61c"
