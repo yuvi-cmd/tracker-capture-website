@@ -204,6 +204,22 @@ async function serveFile(key) {
   }
 }
 
+/* ---------- response helpers (ye missing the — crash ka reason) ---------- */
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+  };
+}
+
+function jsonResp(obj, status) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: Object.assign({ "content-type": "application/json; charset=utf-8" }, corsHeaders()),
+  });
+}
+
 /* ---------- main router ---------- */
 async function handle(request) {
   var url = new URL(request.url);
@@ -219,7 +235,7 @@ async function handle(request) {
     try {
       var loginBody = await request.json();
       var inEmail = String(loginBody.email || "").trim().toLowerCase();
-      var inPw = String(loginBody.password || "");
+      var inPw = String(loginBody.password || "").trim();
 
       if (inEmail === ADMIN_EMAIL) {
         var adminHash = await sha256Hex(inPw);
@@ -260,7 +276,7 @@ async function handle(request) {
     try {
       var regBody = await request.json();
       var rEmail = String(regBody.email || "").trim().toLowerCase();
-      var rPw = String(regBody.password || "");
+      var rPw = String(regBody.password || "").trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rEmail)) {
         return jsonResp({ ok: false, error: "email sahi nahi hai" }, 400);
       }
@@ -344,7 +360,7 @@ async function handle(request) {
       if (p === "/user/loginUser.php") {
         await loadAccounts();
         var aEmail = String(f.email || "").trim().toLowerCase();
-        var aPw = String(f.mdp || "");
+        var aPw = String(f.mdp || "").trim();
         var a = accounts[aEmail];
         if (a) {
           var aHash = await sha256Hex(aEmail + ":" + aPw);
