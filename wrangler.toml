@@ -1,3 +1,15 @@
 name = "tracker-capture-website"
 compatibility_date = "2024-01-01"
 main = "worker.js"
+
+[assets]
+directory = "./public"
+
+# OPTIONAL MEDIA STORAGE:
+# 1) Cloudflare Dashboard -> Workers & Pages -> KV -> Create namespace (naam: guardian-media)
+# 2) Namespace ID copy karo
+# 3) Neeche wali 2 lines uncomment karo aur ID paste karo, phir dashboard se rebuild:
+#
+# [[kv_namespaces]]
+# binding = "KV_DATA"
+# id = "PASTE_KV_NAMESPACE_ID_HERE"
