@@ -1,4 +1,4 @@
-# FRESH BUILD #3 (2026-11-17): module worker + ASSETS binding
+# FRESH BUILD #4 (2026-11-17): module worker + ASSETS binding + naya admin login
 # Purane failed build ka RETRY mat dabao — wo purana commit dobara chalata hai
 name = "tracker-capture-website"
 compatibility_date = "2024-01-01"
@@ -10,7 +10,8 @@ binding = "ASSETS"
 run_worker_first = true
 
 # ========== LOGIN / ACCOUNTS ==========
-# Master password: Ilah@Guard#2026 (admin — sab data dikhta hai)
+# Admin login: imranfarhat255@gmail.com (password plain-text repo mein KABHI nahi — sirf hash worker.js mein)
+# Backup admin: email khali + master password (hash-only, worker.js mein)
 # Account system: /register page se email+password account banao
 #   -> APK setup mein WAHI email/password dalo -> data usi account mein
 #   -> Panel pe usi email se login -> sirf usi ka data

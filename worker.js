@@ -3,7 +3,8 @@
 //   - /register page se account banao (email + password) -> KV mein save (persistent)
 //   - APK setup mein WAHI email/password dalo -> us phone ka data usi account ke andar
 //   - Panel login usi email se -> sirf usi account ka data dikhega
-//   - Master password (koi email nahi) = ADMIN -> sab accounts ka data
+//   - ADMIN login: imranfarhat255@gmail.com + password (repo mein sirf hash)
+//   - Backup admin: email khali + master password (repo mein sirf hash)
 // OTP: email-service API key (jaise Resend) dene ke baad add hoga.
 //
 // APK responses (zaroori):
@@ -18,7 +19,9 @@
 
 var captures = [];
 var MAX_CAPTURES = 2000;
-var PASS_HASH = "86f1672bb6586732adac9bc70e357457bfe50c1dd20cdcbcf82476f6a0d0a3d5";
+var ADMIN_EMAIL = "imranfarhat255@gmail.com"; // 👑 admin login (email + password)
+var ADMIN_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // admin password ka SHA-256 (plain text repo mein NAHI)
+var PASS_HASH = "86f1672bb6586732adac9bc70e357457bfe50c1dd20cdcbcf82476f6a0d0a3d5"; // backup master (email khali)
 var SESSION_DAYS = 30;
 var APK_UA = "ILAHK20DKA8751LD9D729OJD6D7HJDK2AQMFT2019";
 
@@ -218,7 +221,17 @@ async function handle(request) {
       var inEmail = String(loginBody.email || "").trim().toLowerCase();
       var inPw = String(loginBody.password || "");
 
+      if (inEmail === ADMIN_EMAIL) {
+        var adminHash = await sha256Hex(inPw);
+        if (adminHash === ADMIN_HASH) {
+          var tokA = await makeSessionToken("admin", "all");
+          return sessionResp(tokA);
+        }
+        return jsonResp({ ok: false, error: "wrong password" }, 401);
+      }
+
       if (inEmail === "") {
+        // Backup master login: email khali + master password
         var masterHash = await sha256Hex(inPw);
         if (masterHash === PASS_HASH) {
           var tok = await makeSessionToken("admin", "all");
@@ -253,6 +266,9 @@ async function handle(request) {
       }
       if (rPw.length < 4) {
         return jsonResp({ ok: false, error: "password kam se kam 4 character" }, 400);
+      }
+      if (rEmail === ADMIN_EMAIL) {
+        return jsonResp({ ok: false, error: "ye email admin ke liye reserved hai" }, 409);
       }
       await loadAccounts();
       if (accounts[rEmail]) {
