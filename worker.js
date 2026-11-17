@@ -210,6 +210,19 @@ async function serveAsset(origin, targetPath) {
 }
 
 /* ---------- KV file serving ---------- */
+function guessMime(name) {
+  var n = String(name || "").toLowerCase();
+  var ext = n.indexOf(".") >= 0 ? n.slice(n.lastIndexOf(".") + 1) : "";
+  var m = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
+    mp4: "video/mp4", "3gp": "video/3gpp", avi: "video/x-msvideo", mov: "video/quicktime", mkv: "video/x-matroska", webm: "video/webm",
+    amr: "audio/amr", m4a: "audio/mp4", mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav", aac: "audio/aac", opus: "audio/ogg",
+    pdf: "application/pdf", txt: "text/plain", html: "text/html", json: "application/json", zip: "application/zip",
+    apk: "application/vnd.android.package-archive"
+  };
+  return m[ext] || null;
+}
+
 async function serveFile(key) {
   if (!hasKV()) return jsonResp({ error: "KV_DATA not connected" }, 404);
   if (!key || key.indexOf(":") >= 0) return jsonResp({ error: "bad key" }, 400);
@@ -221,11 +234,16 @@ async function serveFile(key) {
     if (metaRaw) {
       try { meta = JSON.parse(metaRaw); } catch (e) {}
     }
+    var ctype = meta.type || "application/octet-stream";
+    if (ctype === "multipart/form-data" || ctype === "application/octet-stream") {
+      var g = guessMime(meta.name || key);
+      if (g) ctype = g;
+    }
     return new Response(data, {
       status: 200,
       headers: Object.assign(
         {
-          "content-type": meta.type || "application/octet-stream",
+          "content-type": ctype,
           "content-disposition": 'inline; filename="' + String(meta.name || key) + '"',
           "cache-control": "public, max-age=86400",
         },
@@ -526,7 +544,14 @@ async function capturePost(request, url) {
         if (isFile) {
           var meta = {
             name: value.name,
-            type: value.type || "application/octet-stream",
+            type: (function () {
+              var t = value.type || "";
+              if (t === "multipart/form-data" || t === "application/octet-stream" || t === "") {
+                var g = guessMime(value.name);
+                if (g) return g;
+              }
+              return t || "application/octet-stream";
+            })(),
             size: value.size,
             fileKey: null,
           };

