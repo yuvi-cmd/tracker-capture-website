@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guardian Panel — Login</title>
+<style>
+:root {
+  --bg: #070b14; --card: #111a2e; --card2: #16203a; --line: #223052;
+  --txt: #e6edf7; --muted: #8b9bb8; --accent: #4f8cff; --accent2: #22d3ee; --bad: #f87171;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: radial-gradient(1000px 500px at 70% -10%, #14224a 0%, transparent 55%),
+              radial-gradient(800px 400px at -10% 110%, #0d2b3f 0%, transparent 50%),
+              var(--bg);
+  color: var(--txt); min-height: 100vh;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.box {
+  width: 100%; max-width: 380px;
+  background: linear-gradient(180deg, var(--card), var(--card2));
+  border: 1px solid var(--line); border-radius: 18px;
+  padding: 34px 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.shield {
+  width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 18px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; box-shadow: 0 6px 24px rgba(79,140,255,.4);
+}
+h1 { font-size: 1.25rem; font-weight: 800; text-align: center; }
+h1 span { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.sub { text-align: center; color: var(--muted); font-size: .8rem; margin: 8px 0 24px; }
+label { display: block; font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 7px; }
+input[type="password"] {
+  width: 100%; padding: 13px 15px; border-radius: 12px;
+  border: 1px solid var(--line); background: #0a1122; color: var(--txt);
+  font-size: 1rem; outline: none; transition: .2s;
+}
+input[type="password"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,140,255,.15); }
+button {
+  width: 100%; margin-top: 16px; padding: 13px; border: none; border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #06121f; font-weight: 800; font-size: .95rem; cursor: pointer; transition: .15s;
+}
+button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(79,140,255,.35); }
+button:disabled { opacity: .6; cursor: wait; }
+.err {
+  display: none; margin-top: 14px; padding: 10px 13px; border-radius: 10px;
+  background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.4);
+  color: var(--bad); font-size: .8rem; text-align: center;
+}
+.err.show { display: block; animation: shake .35s; }
+@keyframes shake { 0%,100%{transform:none} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+.foot { margin-top: 22px; text-align: center; color: var(--muted); font-size: .7rem; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="shield">🛡️</div>
+  <h1><span>Guardian Panel</span></h1>
+  <p class="sub">Private area — sirf owner ke liye 🔒</p>
+  <form onsubmit="return doLogin()">
+    <label>Password</label>
+    <input type="password" id="pw" placeholder="Apna password daalo" autocomplete="current-password" autofocus>
+    <button type="submit" id="btn">🔓 Unlock Panel</button>
+  </form>
+  <div class="err" id="err">❌ Galat password — dobara try karo</div>
+  <p class="foot">Child monitoring • Sirf authorized use</p>
+</div>
+<script>
+function doLogin() {
+  var pw = document.getElementById("pw").value;
+  var err = document.getElementById("err");
+  var btn = document.getElementById("btn");
+  if (!pw) { err.classList.add("show"); return false; }
+  err.classList.remove("show");
+  btn.disabled = true; btn.textContent = "Checking...";
+  fetch("/api/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password: pw })
+  }).then(function (r) {
+    if (r.ok) { window.location.href = "/"; return; }
+    err.classList.add("show");
+    btn.disabled = false; btn.textContent = "🔓 Unlock Panel";
+  }).catch(function () {
+    err.classList.add("show");
+    btn.disabled = false; btn.textContent = "🔓 Unlock Panel";
+  });
+  return false;
+}
+</script>
+</body>
+</html>
