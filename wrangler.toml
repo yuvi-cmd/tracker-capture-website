@@ -1,3 +1,5 @@
+# FRESH BUILD #3 (2026-11-17): module worker + ASSETS binding
+# Purane failed build ka RETRY mat dabao — wo purana commit dobara chalata hai
 name = "tracker-capture-website"
 compatibility_date = "2024-01-01"
 main = "worker.js"
