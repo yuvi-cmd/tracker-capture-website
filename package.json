@@ -2,5 +2,11 @@
   "name": "tracker-capture-website",
   "version": "1.0.0",
   "description": "Capture POST requests from the APK spyware on Cloudflare Pages",
-  "main": "functions/[[path]].js"
+  "main": "worker.js",
+  "scripts": {
+    "deploy": "wrangler deploy worker.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
 }
