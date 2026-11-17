@@ -283,7 +283,8 @@ footer { text-align: center; color: var(--muted); font-size: .72rem; padding: 30
   <!-- DASHBOARD -->
   <section class="panel on" id="p-dashboard">
     <div class="notice green">✅ <div><b>Secure:</b> Ye data tumhare apne Cloudflare Worker pe store hua hai. Original vendor (mobile-tracker-free) ka server is data ko kahin nahi bhej raha.</div></div>
-    <div class="notice amber">⚠️ <div><b>Reminder:</b> Data memory mein hota hai. Permanent storage ke liye <b>KV namespace</b> banao aur worker config mein lagao — tab media files bhi save hongi.</div></div>
+    <div class="notice amber" id="kvNote" style="display:none">⚠️ <div><b>Reminder:</b> Data memory mein hota hai. Permanent storage ke liye <b>KV namespace</b> banao aur worker config mein lagao — tab media files bhi save hongi.</div></div>
+    <div class="notice green" id="kvOk" style="display:none">💾 <div><b>KV Storage connected:</b> Media files, accounts aur device names permanent save ho rahe hain (rebuild pe delete nahi honge).</div></div>
     <div class="head">
       <h2>Quick Actions</h2>
       <div class="spacer">
@@ -465,6 +466,19 @@ function loadMe() {
     .catch(function () {});
 }
 
+function checkKV() {
+  fetch("/api/health", { cache: "no-store" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!j) return;
+      var warn = document.getElementById("kvNote");
+      var okEl = document.getElementById("kvOk");
+      if (warn) warn.style.display = j.kv ? "none" : "flex";
+      if (okEl) okEl.style.display = j.kv ? "flex" : "none";
+    })
+    .catch(function () {});
+}
+
 function logout() {
   fetch("/api/logout", { method: "POST" }).then(function () {
     window.location.href = "/login";
@@ -569,7 +583,7 @@ function renderMedia(list) {
   var note = document.getElementById("media-kv-note");
   var noKv = list.some(function (c) { var f = getF(c); return f && !f.fileKey; });
   note.innerHTML = noKv
-    ? '<div class="notice amber">💡 <div><b>File preview off hai:</b> KV namespace connect nahi hai, isliye sirf metadata dikh raha hai. Cloudflare dashboard mein KV banao aur <span class="mono">KV_DATA</span> binding lagao — images/videos inline dikhne lagenge.</div></div>'
+    ? '<div class="notice amber">💡 <div><b>Kuch files preview ke bina hain:</b> Ye files KV connect hone se pehle aayi thi (sirf metadata save hua tha). Nayi files KV mein save hongi aur photos/videos inline dikhengi.</div></div>'
     : "";
   var filtered = list.filter(function (c) {
     if (mediaFilter === "all") return true;
@@ -741,6 +755,7 @@ function setMediaFilter(k, btn) {
 
 startTimer();
 loadMe();
+checkKV();
 refresh();
 </script>
 </body>

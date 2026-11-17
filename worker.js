@@ -336,7 +336,7 @@ async function handle(request) {
       return jsonResp({ ok: true, message: "cleared" });
     }
     if (path === "/api/health" && method === "GET") {
-      return jsonResp({ ok: true, captures: captures.length, time: new Date().toISOString() });
+      return jsonResp({ ok: true, captures: captures.length, kv: hasKV(), time: new Date().toISOString() });
     }
     if (path.indexOf("/api/file/") === 0 && method === "GET") {
       return serveFile(path.slice("/api/file/".length));
