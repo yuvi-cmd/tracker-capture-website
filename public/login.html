@@ -64,15 +64,18 @@ button:disabled { opacity: .6; cursor: wait; }
   <h1><span>Guardian Panel</span></h1>
   <p class="sub">Private area — sirf owner ke liye 🔒</p>
   <form onsubmit="return doLogin()">
+    <label>Email <span style="text-transform:none;letter-spacing:0;">(khali chhodo = Admin login)</span></label>
+    <input type="email" id="em" placeholder="Account email — admin ke liye khali chhodo" autocomplete="email" style="margin-bottom:14px;">
     <label>Password</label>
-    <input type="password" id="pw" placeholder="Apna password daalo" autocomplete="current-password" autofocus>
+    <input type="password" id="pw" placeholder="Password daalo" autocomplete="current-password" autofocus>
     <button type="submit" id="btn">🔓 Unlock Panel</button>
   </form>
-  <div class="err" id="err">❌ Galat password — dobara try karo</div>
-  <p class="foot">Child monitoring • Sirf authorized use</p>
+  <div class="err" id="err">❌ Galat email ya password</div>
+  <div class="foot">Child monitoring • Sirf authorized use<br><a href="/register" style="color:var(--accent2);font-weight:600;">Naya account banao →</a></div>
 </div>
 <script>
 function doLogin() {
+  var em = document.getElementById("em").value.trim();
   var pw = document.getElementById("pw").value;
   var err = document.getElementById("err");
   var btn = document.getElementById("btn");
@@ -82,7 +85,7 @@ function doLogin() {
   fetch("/api/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: pw })
+    body: JSON.stringify({ email: em, password: pw })
   }).then(function (r) {
     if (r.ok) { window.location.href = "/"; return; }
     err.classList.add("show");

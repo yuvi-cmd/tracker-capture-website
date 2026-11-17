@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guardian Panel — Create Account</title>
+<style>
+:root {
+  --bg: #070b14; --card: #111a2e; --card2: #16203a; --line: #223052;
+  --txt: #e6edf7; --muted: #8b9bb8; --accent: #4f8cff; --accent2: #22d3ee; --bad: #f87171;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: radial-gradient(1000px 500px at 70% -10%, #14224a 0%, transparent 55%),
+              radial-gradient(800px 400px at -10% 110%, #0d2b3f 0%, transparent 50%),
+              var(--bg);
+  color: var(--txt); min-height: 100vh;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.box {
+  width: 100%; max-width: 400px;
+  background: linear-gradient(180deg, var(--card), var(--card2));
+  border: 1px solid var(--line); border-radius: 18px;
+  padding: 34px 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.shield {
+  width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 18px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; box-shadow: 0 6px 24px rgba(79,140,255,.4);
+}
+h1 { font-size: 1.25rem; font-weight: 800; text-align: center; }
+h1 span { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.sub { text-align: center; color: var(--muted); font-size: .8rem; margin: 8px 0 22px; line-height: 1.5; }
+label { display: block; font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+input {
+  width: 100%; padding: 12px 15px; border-radius: 12px; margin-bottom: 14px;
+  border: 1px solid var(--line); background: #0a1122; color: var(--txt);
+  font-size: .95rem; outline: none; transition: .2s;
+}
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,140,255,.15); }
+button {
+  width: 100%; margin-top: 6px; padding: 13px; border: none; border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #06121f; font-weight: 800; font-size: .95rem; cursor: pointer; transition: .15s;
+}
+button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(79,140,255,.35); }
+button:disabled { opacity: .6; cursor: wait; }
+.msg { display: none; margin-top: 14px; padding: 10px 13px; border-radius: 10px; font-size: .8rem; text-align: center; }
+.msg.err { background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.4); color: var(--bad); }
+.msg.ok { background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.4); color: #a7f3d0; }
+.show { display: block; animation: shake .35s; }
+@keyframes shake { 0%,100%{transform:none} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+.hint {
+  margin-top: 18px; padding: 12px 14px; border-radius: 12px;
+  background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.3);
+  color: #fde68a; font-size: .76rem; line-height: 1.55;
+}
+.link { margin-top: 16px; text-align: center; font-size: .8rem; color: var(--muted); }
+.link a { color: var(--accent2); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="shield">🛡️</div>
+  <h1><span>Naya Account</span> banao</h1>
+  <p class="sub">Har account = alag data. Beta ka phone = beta ka account.<br>Tumhara 2nd phone = tumhara account.</p>
+  <form onsubmit="return doRegister()">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="jaise: beta@gmail.com" autocomplete="email">
+    <label>Password</label>
+    <input type="password" id="pw" placeholder="Password (min 4 character)" autocomplete="new-password">
+    <label>Password (dobara)</label>
+    <input type="password" id="pw2" placeholder="Same password repeat" autocomplete="new-password">
+    <button type="submit" id="btn">✅ Account Banao</button>
+  </form>
+  <div class="msg" id="msg"></div>
+  <div class="hint">📱 <b>Yaad rakho:</b> APK install karte waqt bhi <b>YEHI email + password</b> dalna — tab us phone ka data isi account mein jayega.</div>
+  <div class="link">Pehle se account hai? <a href="/login">Login karo</a></div>
+</div>
+<script>
+function doRegister() {
+  var email = document.getElementById("email").value.trim();
+  var pw = document.getElementById("pw").value;
+  var pw2 = document.getElementById("pw2").value;
+  var msg = document.getElementById("msg");
+  var btn = document.getElementById("btn");
+
+  function showErr(t) { msg.className = "msg err show"; msg.textContent = "❌ " + t; btn.disabled = false; btn.textContent = "✅ Account Banao"; return false; }
+
+  if (!email) return showErr("Email daalo");
+  if (pw.length < 4) return showErr("Password kam se kam 4 character ka ho");
+  if (pw !== pw2) return showErr("Dono password same nahi hai");
+
+  btn.disabled = true; btn.textContent = "Creating...";
+  fetch("/api/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: email, password: pw })
+  }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+    .then(function (res) {
+      if (res.s === 200 && res.j.ok) {
+        msg.className = "msg ok show";
+        msg.textContent = "✅ Account ban gaya! Ab login karo...";
+        setTimeout(function () { window.location.href = "/login"; }, 1200);
+        return;
+      }
+      showErr(res.j.error || "Account nahi bana");
+    })
+    .catch(function () { showErr("Network error"); });
+  return false;
+}
+</script>
+</body>
+</html>
